@@ -57,7 +57,7 @@ def cmd_core_start(config: KamaConfig) -> None:
         stderr=subprocess.DEVNULL,
     )
     _PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _PID_FILE.write_text(str(proc.pid))
+    _PID_FILE.write_text(str(proc.pid), encoding="utf-8")
     print(f"started  pid={proc.pid}  ({config.host}:{config.port})")
 
 

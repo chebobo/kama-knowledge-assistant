@@ -37,7 +37,7 @@ class TaskManager:
     # 将任务写入对应 JSON 文件
     def _save(self, task: Task) -> None:
         path = self._dir / f"task_{task.id}.json"
-        path.write_text(json.dumps(task.to_dict(), indent=2, ensure_ascii=False))
+        path.write_text(json.dumps(task.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
 
     # 创建新任务，写入 JSON 文件，返回 Task
     def create(
@@ -112,7 +112,7 @@ class TaskManager:
             if completed_id in blocked:
                 data["blocked_by"] = [x for x in blocked if x != completed_id]
                 data["updated_at"] = _now()
-                f.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+                f.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # 格式化任务列表摘要，供 task_list 工具返回给 Agent
     def format_list(self) -> str:
