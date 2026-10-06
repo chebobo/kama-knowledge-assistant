@@ -16,3 +16,14 @@ uv.lock
 .DS_Store
 *.log
 workspace/
+
+# 知识库原始素材（个人资料，不纳入版本控制）
+knowledge_docs/kamacoder_llm/
+knowledge_docs/深入理解AI-Agent_李博杰/
+knowledge_docs/Building_Effective_Agents_Anthropic_zh-CN.md
+knowledge_docs/*.pdf
+
+# 学习过程杂项（根目录截图/笔记）
+/*.png
+/*.txt
+/how 7100133
