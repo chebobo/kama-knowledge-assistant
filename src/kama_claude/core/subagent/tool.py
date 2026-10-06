@@ -17,6 +17,7 @@ from kama_claude.core.runs import new_run_id
 from kama_claude.core.subagent.registry import BackgroundTaskRegistry
 from kama_claude.core.tools.base import BaseTool, ToolResult
 from kama_claude.core.tools.builtin.bash import BashTool
+from kama_claude.core.tools.builtin.knowledge_search import KnowledgeSearchTool
 from kama_claude.core.tools.builtin.list_dir import ListDirTool
 from kama_claude.core.tools.builtin.read_file import ReadFileTool
 from kama_claude.core.tools.builtin.task_create import TaskCreateTool
@@ -92,6 +93,10 @@ class SpawnAgentTool(BaseTool):
         task_registry: BackgroundTaskRegistry,
         runs_dir: Path,
         session_id: str,
+        knowledge_service: Any | None = None,
+        user_id: str | None = None,
+        project_id: str | None = None,
+        knowledge_top_k: int = 8,
         depth: int = 0,
     ) -> None:
         self._provider = provider
@@ -102,6 +107,10 @@ class SpawnAgentTool(BaseTool):
         self._task_registry = task_registry
         self._runs_dir = runs_dir
         self._session_id = session_id
+        self._knowledge_service = knowledge_service
+        self._user_id = user_id
+        self._project_id = project_id
+        self._knowledge_top_k = knowledge_top_k
         self._depth = depth
 
     # 派生子 agent，前台时阻塞直到完成并返回结果，后台时立即返回 run_id
@@ -254,6 +263,16 @@ class SpawnAgentTool(BaseTool):
             if _allowed(t.name):
                 registry.register(t)
 
+        if self._knowledge_service is not None and _allowed("knowledge_search"):
+            registry.register(
+                KnowledgeSearchTool(
+                    self._knowledge_service,
+                    user_id=self._user_id,
+                    project_id=self._project_id,
+                    default_top_k=self._knowledge_top_k,
+                )
+            )
+
         if self._depth < 1:
             nested = SpawnAgentTool(
                 provider=self._provider,
@@ -264,6 +283,10 @@ class SpawnAgentTool(BaseTool):
                 task_registry=self._task_registry,
                 runs_dir=self._runs_dir,
                 session_id=self._session_id,
+                knowledge_service=self._knowledge_service,
+                user_id=self._user_id,
+                project_id=self._project_id,
+                knowledge_top_k=self._knowledge_top_k,
                 depth=self._depth + 1,
             )
             if _allowed("spawn_agent"):

@@ -36,6 +36,11 @@ from kama_claude.core.bus.commands import (
 from kama_claude.core.bus.envelope import EventPushEnvelope
 from kama_claude.core.config import KamaConfig, get_config
 from kama_claude.core.events.bus import EventBus
+from kama_claude.core.knowledge.catalog import SqliteDocumentCatalog
+from kama_claude.core.knowledge.embedding.local import LocalEmbeddingProvider
+from kama_claude.core.knowledge.service import KnowledgeService
+from kama_claude.core.knowledge.store.qdrant import QdrantVectorStore
+from kama_claude.core.knowledge.token_budget import HuggingFaceTokenCounter
 from kama_claude.core.llm.provider import AnthropicProvider
 from kama_claude.core.logging_setup import setup_logging
 from kama_claude.core.mcp.server import McpServerManager
@@ -67,6 +72,43 @@ class CoreApp:
         self._sessions: SessionManager | None = None
         self._permission_manager: PermissionManager | None = None
         self._mcp_manager: McpServerManager | None = None
+        self._knowledge_service: KnowledgeService | None = None
+
+    # 根据配置构建可选 KnowledgeService；初始化失败时降级为 disabled
+    async def _build_knowledge_service(self, config: KamaConfig) -> KnowledgeService | None:
+        if not config.knowledge.enabled:
+            return None
+        try:
+            if config.knowledge.embedding.provider != "local":
+                raise ValueError(
+                    "unsupported knowledge embedding provider: "
+                    f"{config.knowledge.embedding.provider}"
+                )
+            if config.knowledge.store.provider != "qdrant":
+                raise ValueError(
+                    "unsupported knowledge store provider: "
+                    f"{config.knowledge.store.provider}"
+                )
+            embedding = LocalEmbeddingProvider(config.knowledge.embedding.model)
+            dimension = await asyncio.to_thread(lambda: embedding.dimension)
+            store = QdrantVectorStore(
+                Path(config.knowledge.store.path).expanduser(),
+                dimension=dimension,
+                collection=config.knowledge.store.collection,
+            )
+            await store.initialize()
+            catalog = SqliteDocumentCatalog(Path("~/.kama/knowledge/catalog.db").expanduser())
+            token_counter = HuggingFaceTokenCounter(embedding.tokenizer)
+            return KnowledgeService(
+                embedding=embedding,
+                store=store,
+                catalog=catalog,
+                token_counter=token_counter,
+                max_retrieved_tokens=config.knowledge.max_retrieved_tokens,
+            )
+        except Exception:
+            logger.exception("knowledge initialization failed; disabling knowledge service")
+            return None
 
     # 处理 core.ping 请求，返回服务版本、运行时长和接收时间
     async def _ping_handler(self, params: dict[str, Any]) -> PongResult:
@@ -240,6 +282,10 @@ class CoreApp:
             logger.info("mcp: starting %d server(s)", len(self._config.mcp.servers))
             await self._mcp_manager.start_all(self._config.mcp.servers)
 
+        self._knowledge_service = await self._build_knowledge_service(self._config)
+        if self._config.knowledge.enabled and self._knowledge_service is None:
+            logger.warning("knowledge is configured but unavailable; continuing without RAG")
+
         self._sessions = SessionManager(
             store,
             runner_factory=lambda: AgentRunner(
@@ -248,6 +294,7 @@ class CoreApp:
                 trace=self._trace,
                 permission_manager=self._permission_manager,
                 mcp_manager=self._mcp_manager,
+                knowledge_service=self._knowledge_service,
             ),
             bus=self._bus,
             provider=compact_provider,

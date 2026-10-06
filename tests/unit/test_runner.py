@@ -73,6 +73,38 @@ class _CapturingProvider:
         return self.response
 
 
+class _KnowledgeStub:
+    # 初始化检索调用记录
+    def __init__(self, result: str = "## Retrieved Knowledge\nreference") -> None:
+        self.result = result
+        self.calls: list[tuple[str, str | None, str | None, int]] = []
+
+    # 记录 scope 和 query 并返回固定上下文
+    async def retrieve_context(
+        self,
+        query: str,
+        *,
+        user_id: str | None = None,
+        project_id: str | None = None,
+        top_k: int = 8,
+    ) -> str:
+        self.calls.append((query, user_id, project_id, top_k))
+        return self.result
+
+
+class _FailingKnowledgeStub(_KnowledgeStub):
+    # 模拟检索依赖异常
+    async def retrieve_context(
+        self,
+        query: str,
+        *,
+        user_id: str | None = None,
+        project_id: str | None = None,
+        top_k: int = 8,
+    ) -> str:
+        raise RuntimeError("index unavailable")
+
+
 # --- helpers -----------------------------------------------------------------
 
 
@@ -309,3 +341,46 @@ async def test_session_registers_note_save_tool(tmp_path: Path) -> None:
     await runner.run_and_capture("remember", run_id="run-1", session=session, store=store)
 
     assert "Use Python 3.12" in store.read_notes("sess-1")
+
+
+# 功能：验证启用自动检索时根 Agent 只检索一次并将结果注入 system prompt
+# 设计：stub 捕获 query/scope/top_k，provider 捕获最终 prompt，不依赖真实 embedding 或 Qdrant
+async def test_auto_retrieval_injected_for_root_run(tmp_path: Path) -> None:
+    config = _config()
+    config.knowledge.enabled = True
+    config.knowledge.auto_retrieve = True
+    config.knowledge.top_k = 6
+    knowledge = _KnowledgeStub()
+    provider = _CapturingProvider(LlmResponse(stop_reason="end_turn", text="done"))
+    runner = AgentRunner(
+        config,
+        provider=provider,
+        knowledge_service=knowledge,  # type: ignore[arg-type]
+        runs_dir=tmp_path,
+    )
+
+    await runner.run("find design notes")
+
+    # 默认配置 user_id="local"，project_id 为空串归一化为 None
+    assert knowledge.calls == [("find design notes", "local", None, 6)]
+    assert provider.system is not None and "Retrieved Knowledge" in provider.system
+
+
+# 功能：验证自动检索异常不会阻止 Agent 正常完成
+# 设计：注入抛错的 KnowledgeService stub，确认 prompt 无检索内容且 run 仍走 end_turn
+async def test_auto_retrieval_failure_does_not_fail_run(tmp_path: Path) -> None:
+    config = _config()
+    config.knowledge.enabled = True
+    config.knowledge.auto_retrieve = True
+    provider = _CapturingProvider(LlmResponse(stop_reason="end_turn", text="done"))
+    runner = AgentRunner(
+        config,
+        provider=provider,
+        knowledge_service=_FailingKnowledgeStub(),  # type: ignore[arg-type]
+        runs_dir=tmp_path,
+    )
+
+    outcome = await runner.run_and_capture("ordinary task")
+
+    assert outcome.status == "success"
+    assert provider.system is not None and "Retrieved Knowledge" not in provider.system

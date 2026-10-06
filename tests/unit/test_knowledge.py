@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from kama_claude.core.knowledge.models import (
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeFilter,
+    KnowledgeSearchResult,
+)
+from kama_claude.core.knowledge.service import KnowledgeService
+from kama_claude.core.knowledge.token_budget import CharacterTokenCounter
+from kama_claude.core.tools.builtin.knowledge_search import KnowledgeSearchTool
+
+
+@dataclass
+class _Embedding:
+    # 初始化固定维度的 embedding 测试替身
+    dimension: int = 2
+
+    # 为每段文本返回固定向量，避免依赖真实模型
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[1.0, 0.0] for _ in texts]
+
+
+class _Store:
+    # 初始化记录调用参数的向量存储测试替身
+    def __init__(self) -> None:
+        self.chunks: list[KnowledgeChunk] = []
+        self.filters: list[KnowledgeFilter] = []
+        self.deleted: list[str] = []
+
+    # 记录写入的片段和向量数量
+    async def upsert(self, chunks, embeddings) -> None:
+        assert len(chunks) == len(embeddings)
+        self.chunks = list(chunks)
+
+    # 按 scope 返回固定结果，模拟存储层过滤
+    async def search(self, embedding, *, top_k, filters):
+        self.filters.append(filters)
+        return [
+            KnowledgeSearchResult(chunk=chunk, score=1.0 - i * 0.1)
+            for i, chunk in enumerate(self.chunks[:top_k])
+            if filters.project_id is None or chunk.project_id in (None, filters.project_id)
+        ]
+
+    # 记录删除的文档 ID
+    async def delete_document(self, document_id: str) -> None:
+        self.deleted.append(document_id)
+
+
+def _chunk(content: str = "Agent architecture details") -> KnowledgeChunk:
+    return KnowledgeChunk(
+        id="chunk-1",
+        document_id="doc-1",
+        content=content,
+        source="docs/agent.md",
+        title="Agent Architecture",
+        scope="project",
+        project_id="project-a",
+    )
+
+
+# 功能：验证文档索引会先生成 embedding、删除旧文档向量并写入新片段
+# 设计：使用固定 embedding 和内存 store，断言完整调用结果而不依赖 Qdrant 或模型文件
+async def test_index_writes_chunks_and_updates_status() -> None:
+    store = _Store()
+    service = KnowledgeService(embedding=_Embedding(), store=store)
+    document = KnowledgeDocument(
+        id="doc-1", source="docs/agent.md", title="Agent Architecture", scope="project", project_id="project-a"
+    )
+
+    result = await service.index(document, [_chunk()])
+
+    assert result.document_id == "doc-1"
+    assert result.chunk_count == 1
+    assert document.status == "ready"
+    assert store.deleted == ["doc-1"]
+    assert store.chunks[0].content == "Agent architecture details"
+
+
+# 功能：验证 search 将当前 user/project scope 传递给底层存储
+# 设计：检查 store 捕获的过滤对象，确保调用方不能绕过 KnowledgeService 自行过滤
+async def test_search_passes_scope_filter() -> None:
+    store = _Store()
+    service = KnowledgeService(embedding=_Embedding(), store=store)
+    await service.index(
+        KnowledgeDocument(id="doc-1", source="x", title="x", scope="project", project_id="project-a"),
+        [_chunk()],
+    )
+
+    results = await service.search("architecture", user_id="user-1", project_id="project-a", top_k=8)
+
+    assert len(results) == 1
+    assert store.filters[-1] == KnowledgeFilter(user_id="user-1", project_id="project-a")
+
+
+# 功能：验证 retrieve_context 保留标题、来源和分数，并遵守 token budget
+# 设计：使用字符 token 替身构造超预算内容，确认结果包含来源且不会无限追加文本
+async def test_retrieve_context_formats_and_limits_results() -> None:
+    store = _Store()
+    service = KnowledgeService(
+        embedding=_Embedding(),
+        store=store,
+        token_counter=CharacterTokenCounter(chars_per_token=1),
+        max_retrieved_tokens=220,
+    )
+    await service.index(
+        KnowledgeDocument(id="doc-1", source="x", title="x"),
+        [_chunk("A" * 300)],
+    )
+
+    context = await service.retrieve_context("architecture")
+
+    assert "Retrieved Knowledge" in context
+    assert "source: docs/agent.md" in context
+    assert len(context) <= 220
+
+
+# 功能：验证空查询不调用向量存储并返回空结果
+# 设计：空白查询是工具输入的边界情况，直接断言空列表避免产生无意义 embedding
+async def test_empty_query_returns_no_results() -> None:
+    store = _Store()
+    service = KnowledgeService(embedding=_Embedding(), store=store)
+
+    assert await service.search("   ") == []
+    assert store.filters == []
+
+
+# 功能：验证内容 hash 对相同文本稳定且对变更文本敏感
+# 设计：使用服务的纯函数接口覆盖 Document Catalog 判断增量索引的基础不变量
+def test_content_hash_is_stable() -> None:
+    first = KnowledgeService.content_hash("same")
+    second = KnowledgeService.content_hash("same")
+    changed = KnowledgeService.content_hash("changed")
+
+    assert first == second
+    assert first != changed
+# 功能：验证 knowledge_search 只使用绑定的用户和项目 scope
+# 设计：使用最小异步 stub 记录参数，确认工具输入中不存在可覆盖 scope 的字段
+async def test_knowledge_search_inherits_scope() -> None:
+    class Stub:
+        async def retrieve_context(self, query: str, *, user_id: str | None, project_id: str | None, top_k: int) -> str:
+            assert query == "architecture"
+            assert user_id == "user-a"
+            assert project_id == "project-a"
+            assert top_k == 3
+            return "knowledge"
+
+    tool = KnowledgeSearchTool(Stub(), user_id="user-a", project_id="project-a", default_top_k=8)  # type: ignore[arg-type]
+    result = await tool.invoke({"query": "architecture", "top_k": 3, "project_id": "project-b"})
+    assert result.content == "knowledge"
+    assert not result.is_error
+
+
+# 功能：验证 KnowledgeService 不可用时工具返回明确错误
+# 设计：直接传入 None，覆盖初始化失败降级后的工具行为，不依赖真实向量后端
+async def test_knowledge_search_unavailable() -> None:
+    tool = KnowledgeSearchTool(None, user_id=None, project_id=None)
+    result = await tool.invoke({"query": "anything"})
+    assert result.is_error
+    assert result.error_type == "runtime_error"

@@ -12,6 +12,7 @@ from kama_claude.core.config import KamaConfig
 from kama_claude.core.context import ExecutionContext
 from kama_claude.core.events.bus import EventBus, EventHandler
 from kama_claude.core.events.writer import EventWriter
+from kama_claude.core.knowledge.service import KnowledgeService
 from kama_claude.core.llm.base import LLMProvider
 from kama_claude.core.llm.provider import AnthropicProvider
 from kama_claude.core.loop import AgentLoop
@@ -26,6 +27,7 @@ from kama_claude.core.subagent.tool import AgentResultTool, SpawnAgentTool
 from kama_claude.core.task.manager import TaskManager
 from kama_claude.core.tools.builtin import (
     BashTool,
+    KnowledgeSearchTool,
     ListDirTool,
     NoteSaveTool,
     ReadFileTool,
@@ -64,6 +66,7 @@ class AgentRunner:
         trace: TraceWriter | None = None,
         permission_manager: PermissionManager | None = None,
         mcp_manager: McpServerManager | None = None,
+        knowledge_service: KnowledgeService | None = None,
     ) -> None:
         self._config = config
         self._bus = bus
@@ -73,6 +76,7 @@ class AgentRunner:
         self._trace = trace
         self._permission_manager = permission_manager
         self._mcp_manager = mcp_manager
+        self._knowledge_service = knowledge_service
         # 跨 run 共享的后台 subagent 任务注册表
         self._task_registry = BackgroundTaskRegistry()
 
@@ -88,6 +92,8 @@ class AgentRunner:
         bus: EventBus | None = None,
         child_runs_dir: Path | None = None,
         session_id: str = "",
+        user_id: str | None = None,
+        project_id: str | None = None,
         tool_whitelist: list[str] | None = None,
     ) -> ToolRegistry:
         allowed: set[str] | None = set(tool_whitelist) if tool_whitelist else None
@@ -111,6 +117,15 @@ class AgentRunner:
             note_tool = NoteSaveTool(store, session.id, run_id)
             if _ok(note_tool.name):
                 registry.register(note_tool)
+        if self._knowledge_service is not None and _ok("knowledge_search"):
+            registry.register(
+                KnowledgeSearchTool(
+                    self._knowledge_service,
+                    user_id=user_id,
+                    project_id=project_id,
+                    default_top_k=self._config.knowledge.top_k,
+                )
+            )
         if provider is not None and bus is not None and run_id is not None:
             runs_dir = child_runs_dir or self._runs_dir
             if _ok("spawn_agent"):
@@ -124,6 +139,10 @@ class AgentRunner:
                         task_registry=self._task_registry,
                         runs_dir=runs_dir,
                         session_id=session_id,
+                        knowledge_service=self._knowledge_service,
+                        user_id=user_id,
+                        project_id=project_id,
+                        knowledge_top_k=self._config.knowledge.top_k,
                         depth=0,
                     )
                 )
@@ -179,6 +198,8 @@ class AgentRunner:
             global_context=global_ctx,
             project_context=project_ctx,
             system_prompt_override=system_prompt_override,
+            user_id=self._config.knowledge.user_id or None,
+            project_id=self._config.knowledge.project_id or None,
         )
         prefill_len = len(history)
 
@@ -198,6 +219,7 @@ class AgentRunner:
                         include_payload=self._config.trace.include_llm_payload,
                     )
                 session_id_str = session.id if session is not None else ""
+                await self._retrieve_context(context)
                 child_runs_dir = (
                     store.runs_dir(session.id)
                     if session is not None and store is not None
@@ -212,6 +234,8 @@ class AgentRunner:
                     bus=bus,
                     child_runs_dir=child_runs_dir,
                     session_id=session_id_str,
+                    user_id=context.user_id,
+                    project_id=context.project_id,
                     tool_whitelist=tool_whitelist,
                 )
                 session_dir = (
@@ -260,3 +284,25 @@ class AgentRunner:
             result=context.result,
             reason=context.reason,
         )
+
+    # 仅在启用配置时为根 Agent 检索一次知识上下文，失败时保持空上下文并继续执行
+    async def _retrieve_context(self, context: ExecutionContext) -> None:
+        knowledge_config = self._config.knowledge
+        if (
+            self._knowledge_service is None
+            or not knowledge_config.enabled
+            or not knowledge_config.auto_retrieve
+        ):
+            return
+        try:
+            context.retrieved_context = await self._knowledge_service.retrieve_context(
+                context.goal,
+                user_id=context.user_id,
+                project_id=context.project_id,
+                top_k=knowledge_config.top_k,
+            )
+        except Exception:
+            context.retrieved_context = ""
+            logging.getLogger(__name__).exception(
+                "automatic knowledge retrieval failed run_id=%s", context.run_id
+            )

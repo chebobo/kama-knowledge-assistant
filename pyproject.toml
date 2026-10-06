@@ -16,6 +16,8 @@ dependencies = [
     "anthropic>=0.25",     # Anthropic LLM SDK（流式 + prompt caching）
     "textual>=0.75",       # 终端 UI 框架（kama-tui）
     "httpx[socks]>=0.28.1",
+    "qdrant-client>=1.19.1",
+    "sentence-transformers>=6.1.0",
 ]
 
 # 安装后可在 PATH 中执行的入口：`kama` / `kama-core` / `kama-tui`

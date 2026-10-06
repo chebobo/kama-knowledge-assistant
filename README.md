@@ -1,5 +1,30 @@
 # KamaClaude
 
+## Personal Assistant Knowledge (RAG V1)
+
+The optional local knowledge subsystem uses Qdrant Local for vector search, SQLite for the document catalog, and the local `bge-small-zh-v1.5` model for embeddings and token counting. It is disabled by default and does not require a Qdrant server.
+
+Enable it in `~/.kama/config.toml`:
+
+```toml
+[knowledge]
+enabled = true
+auto_retrieve = true
+top_k = 8
+max_retrieved_tokens = 4000
+
+[knowledge.embedding]
+provider = "local"
+model = "~/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5"
+
+[knowledge.store]
+provider = "qdrant"
+path = "~/.kama/knowledge/qdrant"
+collection = "kama_knowledge"
+```
+
+V1 supports TXT, Markdown, and common code files. Root Agent runs perform one automatic retrieval when `auto_retrieve` is enabled. Root Agents and Subagents can also use `knowledge_search`, which inherits the current user and project scope. Initialization or retrieval failures are isolated from normal Agent execution.
+
 本地 AI Agent 系统。`kama-core` 作为常驻守护进程处理所有任务，`kama`（CLI）和 `kama-tui`（TUI）通过 TCP loopback 与之通信。
 
 ## 环境要求

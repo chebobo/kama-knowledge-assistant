@@ -1,4 +1,5 @@
 from kama_claude.core.tools.builtin.bash import BashTool
+from kama_claude.core.tools.builtin.knowledge_search import KnowledgeSearchTool
 from kama_claude.core.tools.builtin.list_dir import ListDirTool
 from kama_claude.core.tools.builtin.note_save import NoteSaveTool
 from kama_claude.core.tools.builtin.read_file import ReadFileTool
@@ -18,4 +19,5 @@ __all__ = [
     "TaskListTool",
     "TaskUpdateTool",
     "WriteFileTool",
+    "KnowledgeSearchTool",
 ]

@@ -6,9 +6,31 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
+from pathlib import Path
 
 import pytest
+
+from kama_claude.core.knowledge.store.qdrant import QdrantVectorStore
+
+
+@pytest.fixture
+def qdrant_store() -> Callable[..., QdrantVectorStore]:
+    """管理 QdrantVectorStore 生命周期，测试结束无论成败都释放 Local 文件锁"""
+    stores: list[QdrantVectorStore] = []
+
+    def _make(path: Path, **kwargs: object) -> QdrantVectorStore:
+        store = QdrantVectorStore(path, **kwargs)  # type: ignore[arg-type]
+        stores.append(store)
+        return store
+
+    yield _make
+
+    for store in stores:
+        try:
+            store.close()
+        except Exception:
+            pass
 
 
 @pytest.fixture

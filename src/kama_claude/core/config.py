@@ -73,6 +73,31 @@ class McpConfig:
 
 
 @dataclass
+class KnowledgeEmbeddingConfig:
+    provider: str = "local"
+    model: str = "~/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5"
+
+
+@dataclass
+class KnowledgeStoreConfig:
+    provider: str = "qdrant"
+    path: str = "~/.kama/knowledge/qdrant"
+    collection: str = "kama_knowledge"
+
+
+@dataclass
+class KnowledgeConfig:
+    enabled: bool = False
+    auto_retrieve: bool = False
+    top_k: int = 8
+    max_retrieved_tokens: int = 4000
+    user_id: str = "local"
+    project_id: str = ""
+    embedding: KnowledgeEmbeddingConfig = field(default_factory=KnowledgeEmbeddingConfig)
+    store: KnowledgeStoreConfig = field(default_factory=KnowledgeStoreConfig)
+
+
+@dataclass
 class KamaConfig:
     host: str = _DEFAULT_HOST
     port: int = _DEFAULT_PORT
@@ -83,6 +108,7 @@ class KamaConfig:
     permission: PermissionConfig = field(default_factory=PermissionConfig)
     compaction: CompactionConfig = field(default_factory=CompactionConfig)
     mcp: McpConfig = field(default_factory=McpConfig)
+    knowledge: KnowledgeConfig = field(default_factory=KnowledgeConfig)
 
 
 # 构建并返回运行时配置：默认值 → 全局 TOML → 项目本地 TOML → .env → 系统环境变量（后者优先级最高）
@@ -117,7 +143,11 @@ def get_config() -> KamaConfig:
 
 # 将已解析的 TOML 根表写入 config；未知小节或类型错误时退出进程
 def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
-    unknown = set(data.keys()) - {"core", "logging", "agent", "llm", "trace", "permission", "compaction", "mcp"}
+    allowed_keys = {
+        "core", "logging", "agent", "llm", "trace", "permission",
+        "compaction", "mcp", "knowledge",
+    }
+    unknown = set(data.keys()) - allowed_keys
     if unknown:
         raise SystemExit(f"Unknown top-level config keys: {', '.join(sorted(unknown))}")
 
@@ -290,6 +320,56 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
                 s.port = val
             config.mcp.servers.append(s)
 
+    if "knowledge" in data:
+        knowledge = data["knowledge"]
+        if not isinstance(knowledge, dict):
+            raise SystemExit("Config error: [knowledge] must be a table")
+        unknown_knowledge = set(knowledge) - {"enabled", "auto_retrieve", "top_k", "max_retrieved_tokens", "user_id", "project_id", "embedding", "store"}
+        if unknown_knowledge:
+            raise SystemExit(f"Unknown [knowledge] keys: {', '.join(sorted(unknown_knowledge))}")
+        for key in ("enabled", "auto_retrieve"):
+            if key in knowledge:
+                val = knowledge[key]
+                if not isinstance(val, bool):
+                    raise SystemExit(f"Config error: knowledge.{key} must be a boolean")
+                setattr(config.knowledge, key, val)
+        for key in ("top_k", "max_retrieved_tokens"):
+            if key in knowledge:
+                val = knowledge[key]
+                if not isinstance(val, int) or val <= 0:
+                    raise SystemExit(f"Config error: knowledge.{key} must be a positive integer")
+                setattr(config.knowledge, key, val)
+        for key in ("user_id", "project_id"):
+            if key in knowledge:
+                val = knowledge[key]
+                if not isinstance(val, str):
+                    raise SystemExit(f"Config error: knowledge.{key} must be a string")
+                setattr(config.knowledge, key, val)
+        embedding = knowledge.get("embedding", {})
+        if not isinstance(embedding, dict):
+            raise SystemExit("Config error: [knowledge.embedding] must be a table")
+        unknown_embedding = set(embedding) - {"provider", "model"}
+        if unknown_embedding:
+            raise SystemExit(f"Unknown [knowledge.embedding] keys: {', '.join(sorted(unknown_embedding))}")
+        for key in ("provider", "model"):
+            if key in embedding:
+                val = embedding[key]
+                if not isinstance(val, str) or not val:
+                    raise SystemExit(f"Config error: knowledge.embedding.{key} must be a non-empty string")
+                setattr(config.knowledge.embedding, key, val)
+        store = knowledge.get("store", {})
+        if not isinstance(store, dict):
+            raise SystemExit("Config error: [knowledge.store] must be a table")
+        unknown_store = set(store) - {"provider", "path", "collection"}
+        if unknown_store:
+            raise SystemExit(f"Unknown [knowledge.store] keys: {', '.join(sorted(unknown_store))}")
+        for key in ("provider", "path", "collection"):
+            if key in store:
+                val = store[key]
+                if not isinstance(val, str) or not val:
+                    raise SystemExit(f"Config error: knowledge.store.{key} must be a non-empty string")
+                setattr(config.knowledge.store, key, val)
+
 
 # 用 KAMA_* 环境变量覆盖 config 中对应字段（若变量已设置）
 def _apply_env(config: KamaConfig) -> None:
@@ -402,3 +482,41 @@ def _apply_env(config: KamaConfig) -> None:
             raise SystemExit(
                 f"Config error: KAMA_COMPACT_TOOL_KEEP must be an integer, got: {compact_tool_keep!r}"
             )
+
+    knowledge_enabled = os.environ.get("KAMA_KNOWLEDGE_ENABLED")
+    if knowledge_enabled is not None:
+        config.knowledge.enabled = knowledge_enabled.lower() not in ("0", "false", "no")
+    knowledge_auto = os.environ.get("KAMA_KNOWLEDGE_AUTO_RETRIEVE")
+    if knowledge_auto is not None:
+        config.knowledge.auto_retrieve = knowledge_auto.lower() not in ("0", "false", "no")
+    knowledge_top_k = os.environ.get("KAMA_KNOWLEDGE_TOP_K")
+    if knowledge_top_k is not None:
+        try:
+            value = int(knowledge_top_k)
+        except ValueError as exc:
+            raise SystemExit("Config error: KAMA_KNOWLEDGE_TOP_K must be an integer") from exc
+        if value <= 0:
+            raise SystemExit("Config error: KAMA_KNOWLEDGE_TOP_K must be positive")
+        config.knowledge.top_k = value
+    knowledge_tokens = os.environ.get("KAMA_KNOWLEDGE_MAX_RETRIEVED_TOKENS")
+    if knowledge_tokens is not None:
+        try:
+            value = int(knowledge_tokens)
+        except ValueError as exc:
+            raise SystemExit("Config error: KAMA_KNOWLEDGE_MAX_RETRIEVED_TOKENS must be an integer") from exc
+        if value <= 0:
+            raise SystemExit("Config error: KAMA_KNOWLEDGE_MAX_RETRIEVED_TOKENS must be positive")
+        config.knowledge.max_retrieved_tokens = value
+    knowledge_user = os.environ.get("KAMA_KNOWLEDGE_USER_ID")
+    if knowledge_user is not None:
+        config.knowledge.user_id = knowledge_user
+    knowledge_project = os.environ.get("KAMA_KNOWLEDGE_PROJECT_ID")
+    if knowledge_project is not None:
+        config.knowledge.project_id = knowledge_project
+    knowledge_model = os.environ.get("KAMA_KNOWLEDGE_EMBEDDING_MODEL")
+    if knowledge_model is not None:
+        config.knowledge.embedding.model = knowledge_model
+    knowledge_path = os.environ.get("KAMA_KNOWLEDGE_STORE_PATH")
+    if knowledge_path is not None:
+        config.knowledge.store.path = knowledge_path
+
