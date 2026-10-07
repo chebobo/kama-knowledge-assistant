@@ -195,6 +195,43 @@ document_aggregation = "sum"
 
 ---
 
+### 5.5 真实 Agent 端到端验证凭证（真实 daemon + 真实 LLM，2026-10-07）
+
+**环境**：`~/.kama/config.toml`（knowledge enabled + hybrid + `document_aggregation="sum"`）+ `.env`（真实 LLM：`deepseek-v4-pro` via ）+ 真实 daemon（`kama-core` 监听 127.0.0.1:7437）+ CLI/TUI 客户端。知识库 187 文档、2989 向量已索引。
+
+**验证方式**：在真实 Agent 会话中直接提问，观察（1）自动检索注入；（2）LLM 是否自主调用 `knowledge_search`（改查询词）；（3）是否 `read_file` 读知识库原文；（4）回答是否引用知识库内容。全程记录在 daemon trace（`~/.kama/traces/daemon.jsonl`）。
+
+#### 凭证 1：Q9 主题查询（通信协作）——全链路生效
+
+- 用户问题：`多智能体系统中 agent 之间如何通信与编排？`
+- 过程（CLI 输出）：
+  - step 1 `in=7204`：自动检索注入（`retrieved_context` 8515 字符进 system prompt，命中 Q9 目标文档 chapter10.md）
+  - step 1 `knowledge_search` ×2：`query='多智能体 agent 通信 编排 架构'`、`query='multi-agent 通信 编排 orchestrator 消息传递 产物交换'`（LLM 自主中英改写）
+  - step 2 `read_file` ×3：`kamacoder_llm\docs\interview\ll…`、`kamacoder_llm\docs\llm\app\mul…`、`深入理解AI-Agent_李博杰\chapter10.md`（Q9 目标文档）
+- 结果：`✓ completed 3 steps`，`tokens in=32273 out=2234 cache=19840 ctx:16.1%`
+- 回答证据（知识库特有内容）："书籍翻译 Glossary Agent 写术语表、Transl Agent 读取"（chapter10 案例）、"OpenAI Swarm handoff、MetaGPT 消息池"、"A2A 与 MCP 对照"、"Token 预算分级收束"、"没有新信息，多 Agent 往往只是更贵的单 Agent"（核心判据）。
+
+#### 凭证 2：Q18 主题查询（框架异同）——离线评测三层 MISS，真实链路被 LLM 自主改写救回
+
+- 用户问题：`主流 Agent 框架有什么异同`（离线评测 Dense/trigram/聚合三层均 MISS，见 3.2/3.4）
+- 过程（daemon trace，run_id=`20261007-105801-83f188`）：
+  - step 1 LLM **自主改写查询 ×2**：
+    - `knowledge_search query='主流 Agent 框架对比 LangChain CrewAI AutoGen Claude Code 编排模式 适用场景'`
+    - `knowledge_search query='Agent 框架选型 LangGraph CrewAI AutoGen MetaGPT 区别'`
+  - knowledge_search 返回：`OpenClaw、Hermes Agent、Claude Code三框架横评…` 等
+  - step 2 `read_file`：**`agent_framework_comparison.md`（Q18 的 expected_doc，离线评测从未命中）** + 另一篇
+- 结果：`✓ completed 3 steps`，`tokens in=13438 out=2516 cache=26112 ctx:6.7%`
+- 回答证据：总览表（Codex Harness/Claude Agent SDK/LangGraph/CrewAI/AutoGen/Swarm/n8n/Dify/OpenClaw/MetaGPT）+ 三条轴（编排模式/通信协作/产品级深挖）+ 选型 + "Harness 是落地关键"，内容与 `agent_framework_comparison.md` 的 expected section（"架构对比：底层设计思路有什么不同"）一致。
+
+#### 凭证结论
+
+1. **检索 → 工具 → 读原文 → 综合回答，全链路在真实对话中生效**，LLM 主动使用 `knowledge_search` 并改写查询词；
+2. **Q18 离线 MISS ≠ 知识库无内容，而是查询表达问题**：原问题太泛，单次向量检索抓不住"框架对比"意图；LLM 改写成具体框架名后命中——**Query Rewrite 方向获得真实链路证据**；
+3. **离线评测（静态检索上限）与真实 Agent（动态改写+多轮检索）存在口径差异**，后续 Query Rewrite 评测可增加"改写后查询命中率"基准；
+4. 附带修复：Windows 平台 `app.py` 的 `loop.add_signal_handler` 不支持（NotImplementedError），已加平台兼容处理（try/except 兜底，Ctrl+C 走 KeyboardInterrupt）。
+
+---
+
 ## 六、结论与后续方向
 
 **阶段结论**：

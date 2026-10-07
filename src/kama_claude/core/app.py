@@ -354,8 +354,12 @@ class CoreApp:
 
         loop = asyncio.get_running_loop()
         shutdown = asyncio.Event()
-        loop.add_signal_handler(signal.SIGINT, shutdown.set)
-        loop.add_signal_handler(signal.SIGTERM, shutdown.set)
+        # Windows 的 asyncio loop 不支持 add_signal_handler，Ctrl+C 通过 KeyboardInterrupt 兜底退出
+        try:
+            loop.add_signal_handler(signal.SIGINT, shutdown.set)
+            loop.add_signal_handler(signal.SIGTERM, shutdown.set)
+        except NotImplementedError:
+            logger.info("signal handlers unsupported on this platform; Ctrl+C will exit via KeyboardInterrupt")
 
         await shutdown.wait()
 
