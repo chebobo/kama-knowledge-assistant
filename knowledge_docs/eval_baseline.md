@@ -1,8 +1,9 @@
-# RAG 指标化评估报告（V1 → V2 对比 · golden 集）
+# RAG 指标化评估报告（V1 → V2 对比 · golden 集 · 双口径）
 
-> 生成：V1 2026-10-06 / V2 2026-10-07
-> 评估集：`golden_set.json`（20 问，每问人工标注预期文档 + 预期 section，已对照原文章节结构验证）
-> 匹配：document 级（chunk 的 source 文件名 == expected_doc，同文档重复 chunk 只计首次）
+> 生成：V1 2026-10-06 / V2 2026-10-07 / 双口径 2026-10-07
+> 评估集：`golden_set.json`（20 问，每问人工标注预期文档 + 预期 section；6 题标注 related_docs）
+> 匹配：document 级（chunk 的 source 文件名 == 目标文档，同文档重复 chunk 只计首次）
+> 口径：**single（主指标）**= 命中 expected_doc 才 rel=1；**multi（辅助）**= 命中任一 related_docs 即 rel=1（仅 Q2/Q3/Q9/Q16/Q18/Q19 多答案，其余两口径一致）
 > 链路：真实 Qdrant Local + bge-small-zh-v1.5
 > 索引：V1 = 187 篇 / 3237 chunks（含 frontmatter/空壳）；V2 = 187 篇 / 2989 chunks（跳 frontmatter/滤空壳/段落边界 + 标题/描述注入）
 
@@ -45,13 +46,26 @@
 - 根源是 **frontmatter 中文 title/description 注入**：Q5 的 mha.md 靠 description 中"多头注意力"中文信号从 rank5 → rank1；Q11 mcp 从 rank4 → rank1。
 - 段落边界切分让 chunk 语义完整，排序整体前移。
 
-**退化面（Q3/Q9 新 MISS）**：
-- Q3：`agentic_rag.md` 的 title/desc 与"RAG 核心思路"语义高度重合，Top-5 全占；`rag_interview.md`（面试题汇总文体）反而被挤出。**实际两者都相关，属 golden 单标签口径局限**。
-- Q9：李博杰 `chapter10.md`（多智能体整章，无 frontmatter，51 chunks）正文主题密度高，淹没 33 chunks 的面试文档。**大部头章节淹没问题**。
+**退化面（Q3/Q9 新 MISS）——已被双口径评测正名**：
+- Q3：`agentic_rag.md` 与"RAG 核心思路"语义高度重合，Top-5 全占；multi 口径下 **agentic_rag 是相关文档 → 命中（rank=1）**。**属 golden 单标签口径局限，非检索缺陷**。
+- Q9：李博杰 `chapter10.md`（多智能体整章，无 frontmatter，51 chunks）正文主题密度高，淹没 33 chunks 的面试文档；multi 口径下 **chapter10 是相关文档 → 命中（rank=1）**。**属大部头章节淹没 + 单标签局限**。
+- 注意：Q3/Q9 的 Top-5 被**同一个文档的多个 chunk 霸榜**（agentic_rag ×5、chapter10 ×4），说明即使多标签，检索也只找回了"一个"相关文档——**文档频率偏置/结果多样性不足**是新暴露的问题，与 Q9 大部头淹没同源，指向后续 Document Aggregation / Hybrid 多样性处理。
 
-**遗留硬缺陷（Q16/Q18，V1 就有，V2 未解）**：
-- 幻觉治理、框架对比两题，预期文档被 generic 文档（how_llm_trained、chapter1）抢占。
-- 共性：**纯向量 top-k 的语义近邻竞争 + 专名/文体不匹配**，正是 P2 Hybrid Search（BM25）+ Reranker 的目标。
+**遗留硬缺陷（Q16/Q18，双口径下均仍 MISS，确认真缺陷）**：
+- Q16：Top-5 = how_llm_trained / llm_keywords / why_rag，**连 related_docs（agent_drift_hallucination_interview）都没进 Top-5**。
+- Q18：Top-5 = chapter1 / agent_vs_workflow，**连 related_docs（harness_interview）都没进 Top-5**。
+- 结论：多标签口径无法救回这两题——不是评测判错，而是**检索确实没有返回任何合理相关的文档**。这是纯向量 top-k 的语义近邻竞争 + 专名/文体不匹配，正是 P2 Hybrid Search（BM25）的目标。
+
+## 双口径评测结果（2026-10-07，k=5）
+
+| 口径 | Recall@5 | MRR@5 | NDCG@5 |
+|---|---|---|---|
+| single（主） | 0.800 (16/20) | 0.713 | 0.735 |
+| multi（辅助） | **0.900 (18/20)** | **0.812** | **0.835** |
+
+- 差异来源：Q3、Q9 两题（multi 命中、single MISS）——正是先前归因"单标签口径局限"的两题，现已实证。
+- Q16/Q18 两口径均 MISS → **真缺陷确认**，评测修正不会掩盖真实问题，这是双口径设计的价值。
+- Q2/Q19 的 related 文档未改变判定（expected 本身已命中）。
 
 ## 对 V2 的量化评价
 

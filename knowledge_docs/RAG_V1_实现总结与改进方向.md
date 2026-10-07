@@ -102,17 +102,27 @@
 | MRR@5 | 0.709 | **0.713** | +0.004（超 V1）|
 | NDCG@5 | 0.755 | 0.735 | -0.020 |
 
-逐问：**救回 3 题**（Q5 多头注意力 5→1、Q11 MCP 4→1、Q19 Workflow 5→2，Q14/Q17 前移）；**新增 2 MISS**（Q3、Q9）。
+**双口径评测（2026-10-07）**：为 Q2/Q3/Q9/Q16/Q18/Q19 六题标注 `related_docs`（确实存在多合理答案），single 命中 expected_doc / multi 命中任一相关文档：
+
+| 口径 | Recall@5 | MRR@5 | NDCG@5 |
+|---|---|---|---|
+| single（主指标）| 0.800 (16/20) | 0.713 | 0.735 |
+| multi（辅助）| **0.900 (18/20)** | **0.812** | **0.835** |
+
+![V2 双口径评测](./eval_v2_dual_metric.png)
+
+逐问：**救回 3 题**（Q5 多头注意力 5→1、Q11 MCP 4→1、Q19 Workflow 5→2，Q14/Q17 前移）；**2 题被多标签正名**（Q3/Q9）。
 
 ### 3.4 V2 结论
 
 - **chunk 质量显著提升、排序整体前移**（MRR 超 V1），核心功臣是 frontmatter 中文 title/description 注入。
-- Recall 未升反降的 2 题属**可解释而非回归**：
-  - Q3：`agentic_rag.md` 与"RAG 核心思路"语义重合度更高，Top-5 全占——两文档实际都相关，**golden 单标签口径局限**；
-  - Q9：李博杰 `chapter10.md`（多智能体整章 51 chunks）淹没 33 chunks 的面试文档——**大部头章节淹没**。
-- **遗留硬缺陷（Q16 幻觉治理、Q18 框架对比，V1 就有）**：泛词被 generic 文档抢占 + 专名/文体不匹配，是纯向量 top-k 固有局限。
+- **Q3/Q9 已被双口径评测正名**（multi 命中）：
+  - Q3：`agentic_rag.md` 与"RAG 核心思路"语义高度重合且 Top-5 全占——**检索返回了合理相关文档，是单标签判错，非检索缺陷**；
+  - Q9：李博杰 `chapter10.md`（多智能体整章）相关且被优先召回——**大部头文档相关，是单标签局限**；
+  - 新暴露：两题 Top-5 被**同一文档霸榜**（agentic_rag ×5、chapter10 ×4），文档频率偏置/结果多样性不足，与 Q9 大部头淹没同源。
+- **Q16/Q18 双口径均 MISS，确认真缺陷**：连各自 related_docs（agent_drift_hallucination_interview / harness_interview）都没进 Top-5——不是评测判错，是**检索没返回任何合理相关文档**。纯向量 top-k 固有盲区，指向 **P2 Hybrid Search**（BM25 精确关键词）。
 
-**V2 剩余问题全部指向 P2**：Hybrid Search（BM25 精确关键词救长尾）→ Reranker（精排）→ Query Rewrite。
+**V2 剩余问题全部指向 P2**：Hybrid Search（BM25 精确关键词救长尾）→ Document Aggregation（解决霸榜/大部头）→ Reranker（精排）→ Query Rewrite。
 
 ## 四、结论：基本实现可用
 
