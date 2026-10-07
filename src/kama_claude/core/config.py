@@ -4,7 +4,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 
@@ -95,6 +95,7 @@ class KnowledgeConfig:
     lexical_path: str = "~/.kama/knowledge/lexical.db"
     candidate_multiplier: int = 2
     rrf_k: int = 60
+    document_aggregation: Literal["sum"] | None = None
     user_id: str = "local"
     project_id: str = ""
     embedding: KnowledgeEmbeddingConfig = field(default_factory=KnowledgeEmbeddingConfig)
@@ -331,7 +332,7 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
         unknown_knowledge = set(knowledge) - {
             "enabled", "auto_retrieve", "hybrid_enabled", "top_k", "max_retrieved_tokens",
             "lexical_path", "candidate_multiplier", "rrf_k", "user_id", "project_id",
-            "embedding", "store",
+            "document_aggregation", "embedding", "store",
         }
         if unknown_knowledge:
             raise SystemExit(f"Unknown [knowledge] keys: {', '.join(sorted(unknown_knowledge))}")
@@ -352,6 +353,15 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
             if not isinstance(val, int) or val < 0:
                 raise SystemExit("Config error: knowledge.rrf_k must be a non-negative integer")
             config.knowledge.rrf_k = val
+        if "document_aggregation" in knowledge:
+            val = knowledge["document_aggregation"]
+            if val == "":
+                val = None
+            if val is not None and val != "sum":
+                raise SystemExit(
+                    "Config error: knowledge.document_aggregation must be empty or 'sum'"
+                )
+            config.knowledge.document_aggregation = val
         if "lexical_path" in knowledge:
             val = knowledge["lexical_path"]
             if not isinstance(val, str) or not val:
@@ -513,6 +523,16 @@ def _apply_env(config: KamaConfig) -> None:
     knowledge_lexical_path = os.environ.get("KAMA_KNOWLEDGE_LEXICAL_PATH")
     if knowledge_lexical_path is not None:
         config.knowledge.lexical_path = knowledge_lexical_path
+    knowledge_aggregation = os.environ.get("KAMA_KNOWLEDGE_DOCUMENT_AGGREGATION")
+    if knowledge_aggregation is not None:
+        if knowledge_aggregation in ("", "none", "null"):
+            config.knowledge.document_aggregation = None
+        elif knowledge_aggregation == "sum":
+            config.knowledge.document_aggregation = "sum"
+        else:
+            raise SystemExit(
+                "Config error: KAMA_KNOWLEDGE_DOCUMENT_AGGREGATION must be empty, none, or sum"
+            )
     for env_name, config_name in (
         ("KAMA_KNOWLEDGE_CANDIDATE_MULTIPLIER", "candidate_multiplier"),
         ("KAMA_KNOWLEDGE_RRF_K", "rrf_k"),

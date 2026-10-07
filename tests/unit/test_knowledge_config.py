@@ -16,6 +16,7 @@ def test_knowledge_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.knowledge.hybrid_enabled is False
     assert config.knowledge.candidate_multiplier == 2
     assert config.knowledge.rrf_k == 60
+    assert config.knowledge.document_aggregation is None
 
 
 # 功能：验证 Hybrid 与 lexical 配置能从 TOML 严格解析
@@ -31,6 +32,7 @@ def test_hybrid_config_toml_values() -> None:
                 "lexical_path": "knowledge/lexical.db",
                 "candidate_multiplier": 3,
                 "rrf_k": 45,
+                "document_aggregation": "sum",
             }
         },
     )
@@ -39,6 +41,7 @@ def test_hybrid_config_toml_values() -> None:
     assert config.knowledge.lexical_path == "knowledge/lexical.db"
     assert config.knowledge.candidate_multiplier == 3
     assert config.knowledge.rrf_k == 45
+    assert config.knowledge.document_aggregation == "sum"
 
 
 # 功能：验证无效 Hybrid 参数会在配置加载时被拒绝
@@ -46,6 +49,12 @@ def test_hybrid_config_toml_values() -> None:
 def test_hybrid_config_rejects_invalid_candidate_multiplier() -> None:
     with pytest.raises(SystemExit, match="knowledge.candidate_multiplier"):
         _apply_toml(KamaConfig(), {"knowledge": {"candidate_multiplier": 0}})
+
+
+# 功能：验证未知文档聚合函数不会静默改变检索排序
+def test_hybrid_config_rejects_invalid_document_aggregation() -> None:
+    with pytest.raises(SystemExit, match="document_aggregation"):
+        _apply_toml(KamaConfig(), {"knowledge": {"document_aggregation": "max"}})
 
 
 # 功能：验证 TOML 和环境变量配置覆盖顺序

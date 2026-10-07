@@ -5,7 +5,11 @@ import logging
 
 from kama_claude.core.knowledge.models import KnowledgeFilter, KnowledgeSearchResult
 from kama_claude.core.knowledge.retriever.base import Retriever
-from kama_claude.core.knowledge.retriever.fusion import reciprocal_rank_fusion
+from kama_claude.core.knowledge.retriever.fusion import (
+    DocumentAggregation,
+    aggregate_document_results,
+    reciprocal_rank_fusion,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +23,19 @@ class HybridRetriever:
         bm25: Retriever,
         candidate_multiplier: int = 2,
         rrf_k: int = 60,
+        document_aggregation: DocumentAggregation | None = None,
     ) -> None:
         if candidate_multiplier < 1:
             raise ValueError("candidate_multiplier must be positive")
         if rrf_k < 0:
             raise ValueError("rrf_k must be non-negative")
+        if document_aggregation not in {None, "sum"}:
+            raise ValueError("document_aggregation must be None or sum")
         self._dense = dense
         self._bm25 = bm25
         self._candidate_multiplier = candidate_multiplier
         self._rrf_k = rrf_k
+        self._document_aggregation = document_aggregation
 
     # 并行检索两路候选并在单路故障时保留可用结果
     async def retrieve(
@@ -62,4 +70,11 @@ class HybridRetriever:
             raise RuntimeError("all hybrid retrieval sources failed") from BaseExceptionGroup(
                 "hybrid retrieval failures", errors
             )
-        return reciprocal_rank_fusion(result_lists, rrf_k=self._rrf_k, top_k=top_k)
+        fused = reciprocal_rank_fusion(result_lists, rrf_k=self._rrf_k)
+        if self._document_aggregation is None:
+            return fused[:top_k]
+        return aggregate_document_results(
+            fused,
+            aggregation=self._document_aggregation,
+            top_k=top_k,
+        )

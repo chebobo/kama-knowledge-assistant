@@ -115,6 +115,7 @@ class CoreApp:
                         bm25=BM25Retriever(lexical_store),
                         candidate_multiplier=config.knowledge.candidate_multiplier,
                         rrf_k=config.knowledge.rrf_k,
+                        document_aggregation=config.knowledge.document_aggregation,
                     )
                     logger.info(
                         "knowledge hybrid retrieval enabled (SQLite %s)",

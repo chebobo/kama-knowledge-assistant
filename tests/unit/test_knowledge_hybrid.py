@@ -60,6 +60,38 @@ async def test_hybrid_retrieves_candidates_and_fuses_results() -> None:
     assert [result.rank for result in results] == [1, 2]
 
 
+# 功能：验证 sum 聚合按文档截断，并保持默认 chunk 模式之外的显式开关行为
+# 设计：同一文档的多个 chunk 只能占一个 document top-k 席位
+async def test_hybrid_document_sum_aggregation() -> None:
+    def document_result(identifier: str, document_id: str, rank: int) -> KnowledgeSearchResult:
+        return KnowledgeSearchResult(
+            chunk=KnowledgeChunk(
+                id=identifier,
+                document_id=document_id,
+                content=identifier,
+                source=f"{document_id}.md",
+                title=document_id,
+            ),
+            score=0.9,
+            rank=rank,
+        )
+
+    dense = _Retriever(
+        [
+            document_result("a1", "doc-a", 1),
+            document_result("a2", "doc-a", 2),
+            document_result("b1", "doc-b", 3),
+        ]
+    )
+    bm25 = _Retriever([])
+    hybrid = HybridRetriever(dense=dense, bm25=bm25, document_aggregation="sum")
+
+    results = await hybrid.retrieve("query", top_k=2, filters=KnowledgeFilter())
+
+    assert [result.chunk.document_id for result in results] == ["doc-a", "doc-b"]
+    assert [result.rank for result in results] == [1, 2]
+
+
 # 功能：验证一路异常时 Hybrid 仍返回另一路可用候选
 # 设计：令 BM25 抛错并让 Dense 命中，覆盖部分失效的降级路径
 async def test_hybrid_continues_when_one_source_fails() -> None:

@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 
 from kama_claude.core.knowledge.models import KnowledgeChunk, KnowledgeSearchResult
-from kama_claude.core.knowledge.retriever.fusion import reciprocal_rank_fusion
+from kama_claude.core.knowledge.retriever.fusion import (
+    aggregate_document_results,
+    reciprocal_rank_fusion,
+)
 
 
 # 构造可指定检索 rank 的融合输入
@@ -54,3 +57,47 @@ def test_rrf_rejects_negative_parameters() -> None:
         reciprocal_rank_fusion([], rrf_k=-1)
     with pytest.raises(ValueError, match="top_k"):
         reciprocal_rank_fusion([], top_k=-1)
+
+
+# 功能：验证 document aggregation 按 document_id 求和并重新编号
+# 设计：同一文档两个 chunk 应合并为一个结果，且不能占据两个输出席位
+def test_document_aggregation_sums_chunks_and_limits_documents() -> None:
+    results = [
+        KnowledgeSearchResult(
+            chunk=KnowledgeChunk(
+                id="a1", document_id="doc-a", content="a1", source="a.md", title="A"
+            ),
+            score=0.5,
+            retriever="hybrid",
+            rank=1,
+        ),
+        KnowledgeSearchResult(
+            chunk=KnowledgeChunk(
+                id="b1", document_id="doc-b", content="b1", source="b.md", title="B"
+            ),
+            score=0.8,
+            retriever="hybrid",
+            rank=2,
+        ),
+        KnowledgeSearchResult(
+            chunk=KnowledgeChunk(
+                id="a2", document_id="doc-a", content="a2", source="a.md", title="A"
+            ),
+            score=0.5,
+            retriever="hybrid",
+            rank=3,
+        ),
+    ]
+
+    aggregated = aggregate_document_results(results, aggregation="sum", top_k=1)
+
+    assert len(aggregated) == 1
+    assert aggregated[0].chunk.document_id == "doc-a"
+    assert aggregated[0].score == pytest.approx(1.0)
+    assert aggregated[0].rank == 1
+
+
+# 功能：验证 document aggregation 拒绝生产路径尚未支持的函数
+def test_document_aggregation_rejects_unknown_function() -> None:
+    with pytest.raises(ValueError, match="aggregation"):
+        aggregate_document_results([], aggregation="mean")  # type: ignore[arg-type]
