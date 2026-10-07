@@ -89,8 +89,12 @@ class KnowledgeStoreConfig:
 class KnowledgeConfig:
     enabled: bool = False
     auto_retrieve: bool = False
+    hybrid_enabled: bool = False
     top_k: int = 8
     max_retrieved_tokens: int = 4000
+    lexical_path: str = "~/.kama/knowledge/lexical.db"
+    candidate_multiplier: int = 2
+    rrf_k: int = 60
     user_id: str = "local"
     project_id: str = ""
     embedding: KnowledgeEmbeddingConfig = field(default_factory=KnowledgeEmbeddingConfig)
@@ -324,21 +328,35 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
         knowledge = data["knowledge"]
         if not isinstance(knowledge, dict):
             raise SystemExit("Config error: [knowledge] must be a table")
-        unknown_knowledge = set(knowledge) - {"enabled", "auto_retrieve", "top_k", "max_retrieved_tokens", "user_id", "project_id", "embedding", "store"}
+        unknown_knowledge = set(knowledge) - {
+            "enabled", "auto_retrieve", "hybrid_enabled", "top_k", "max_retrieved_tokens",
+            "lexical_path", "candidate_multiplier", "rrf_k", "user_id", "project_id",
+            "embedding", "store",
+        }
         if unknown_knowledge:
             raise SystemExit(f"Unknown [knowledge] keys: {', '.join(sorted(unknown_knowledge))}")
-        for key in ("enabled", "auto_retrieve"):
+        for key in ("enabled", "auto_retrieve", "hybrid_enabled"):
             if key in knowledge:
                 val = knowledge[key]
                 if not isinstance(val, bool):
                     raise SystemExit(f"Config error: knowledge.{key} must be a boolean")
                 setattr(config.knowledge, key, val)
-        for key in ("top_k", "max_retrieved_tokens"):
+        for key in ("top_k", "max_retrieved_tokens", "candidate_multiplier"):
             if key in knowledge:
                 val = knowledge[key]
                 if not isinstance(val, int) or val <= 0:
                     raise SystemExit(f"Config error: knowledge.{key} must be a positive integer")
                 setattr(config.knowledge, key, val)
+        if "rrf_k" in knowledge:
+            val = knowledge["rrf_k"]
+            if not isinstance(val, int) or val < 0:
+                raise SystemExit("Config error: knowledge.rrf_k must be a non-negative integer")
+            config.knowledge.rrf_k = val
+        if "lexical_path" in knowledge:
+            val = knowledge["lexical_path"]
+            if not isinstance(val, str) or not val:
+                raise SystemExit("Config error: knowledge.lexical_path must be a non-empty string")
+            config.knowledge.lexical_path = val
         for key in ("user_id", "project_id"):
             if key in knowledge:
                 val = knowledge[key]
@@ -489,6 +507,26 @@ def _apply_env(config: KamaConfig) -> None:
     knowledge_auto = os.environ.get("KAMA_KNOWLEDGE_AUTO_RETRIEVE")
     if knowledge_auto is not None:
         config.knowledge.auto_retrieve = knowledge_auto.lower() not in ("0", "false", "no")
+    knowledge_hybrid = os.environ.get("KAMA_KNOWLEDGE_HYBRID_ENABLED")
+    if knowledge_hybrid is not None:
+        config.knowledge.hybrid_enabled = knowledge_hybrid.lower() not in ("0", "false", "no")
+    knowledge_lexical_path = os.environ.get("KAMA_KNOWLEDGE_LEXICAL_PATH")
+    if knowledge_lexical_path is not None:
+        config.knowledge.lexical_path = knowledge_lexical_path
+    for env_name, config_name in (
+        ("KAMA_KNOWLEDGE_CANDIDATE_MULTIPLIER", "candidate_multiplier"),
+        ("KAMA_KNOWLEDGE_RRF_K", "rrf_k"),
+    ):
+        raw_value = os.environ.get(env_name)
+        if raw_value is not None:
+            try:
+                value = int(raw_value)
+            except ValueError as exc:
+                raise SystemExit(f"Config error: {env_name} must be an integer") from exc
+            minimum = 0 if config_name == "rrf_k" else 1
+            if value < minimum:
+                raise SystemExit(f"Config error: {env_name} must be >= {minimum}")
+            setattr(config.knowledge, config_name, value)
     knowledge_top_k = os.environ.get("KAMA_KNOWLEDGE_TOP_K")
     if knowledge_top_k is not None:
         try:

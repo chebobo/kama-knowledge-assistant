@@ -38,6 +38,10 @@ from kama_claude.core.config import KamaConfig, get_config
 from kama_claude.core.events.bus import EventBus
 from kama_claude.core.knowledge.catalog import SqliteDocumentCatalog
 from kama_claude.core.knowledge.embedding.local import LocalEmbeddingProvider
+from kama_claude.core.knowledge.retriever.bm25 import BM25Retriever
+from kama_claude.core.knowledge.retriever.dense import DenseRetriever
+from kama_claude.core.knowledge.retriever.hybrid import HybridRetriever
+from kama_claude.core.knowledge.retriever.lexical_store import SqliteLexicalStore
 from kama_claude.core.knowledge.service import KnowledgeService
 from kama_claude.core.knowledge.store.qdrant import QdrantVectorStore
 from kama_claude.core.knowledge.token_budget import HuggingFaceTokenCounter
@@ -99,9 +103,36 @@ class CoreApp:
             await store.initialize()
             catalog = SqliteDocumentCatalog(Path("~/.kama/knowledge/catalog.db").expanduser())
             token_counter = HuggingFaceTokenCounter(embedding.tokenizer)
+            lexical_store = None
+            retriever = None
+            if config.knowledge.hybrid_enabled:
+                try:
+                    lexical_store = SqliteLexicalStore(
+                        Path(config.knowledge.lexical_path).expanduser()
+                    )
+                    retriever = HybridRetriever(
+                        dense=DenseRetriever(embedding=embedding, store=store),
+                        bm25=BM25Retriever(lexical_store),
+                        candidate_multiplier=config.knowledge.candidate_multiplier,
+                        rrf_k=config.knowledge.rrf_k,
+                    )
+                    logger.info(
+                        "knowledge hybrid retrieval enabled (SQLite %s)",
+                        SqliteLexicalStore.probe_trigram_support(),
+                    )
+                except Exception:
+                    if lexical_store is not None:
+                        await lexical_store.close()
+                    lexical_store = None
+                    retriever = None
+                    logger.exception(
+                        "hybrid retrieval initialization failed; using dense retrieval"
+                    )
             return KnowledgeService(
                 embedding=embedding,
                 store=store,
+                retriever=retriever,
+                lexical_store=lexical_store,
                 catalog=catalog,
                 token_counter=token_counter,
                 max_retrieved_tokens=config.knowledge.max_retrieved_tokens,

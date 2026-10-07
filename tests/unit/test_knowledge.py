@@ -33,9 +33,13 @@ class _Store:
         self.chunks: list[KnowledgeChunk] = []
         self.filters: list[KnowledgeFilter] = []
         self.deleted: list[str] = []
+        self.fail_upsert = False
+        self.fail_delete = False
 
     # 记录写入的片段和向量数量
     async def upsert(self, chunks, embeddings) -> None:
+        if self.fail_upsert:
+            raise RuntimeError("qdrant write failed")
         assert len(chunks) == len(embeddings)
         self.chunks = list(chunks)
 
@@ -50,7 +54,47 @@ class _Store:
 
     # 记录删除的文档 ID
     async def delete_document(self, document_id: str) -> None:
+        if self.fail_delete:
+            raise RuntimeError("qdrant delete failed")
         self.deleted.append(document_id)
+
+
+class _LexicalStore:
+    # 初始化记录 lexical index 操作的测试替身
+    def __init__(self) -> None:
+        self.documents: dict[str, list[KnowledgeChunk]] = {}
+        self.fail_replace = False
+        self.fail_delete = False
+
+    # 按文档替换 lexical chunks，可注入写入异常
+    async def replace_document(self, document_id: str, chunks: list[KnowledgeChunk]) -> None:
+        if self.fail_replace:
+            raise RuntimeError("fts write failed")
+        self.documents[document_id] = list(chunks)
+
+    # 按文档删除 lexical chunks，可注入删除异常
+    async def delete_document(self, document_id: str) -> None:
+        if self.fail_delete:
+            raise RuntimeError("fts delete failed")
+        self.documents.pop(document_id, None)
+
+
+class _Catalog:
+    # 初始化记录文档状态的目录测试替身
+    def __init__(self) -> None:
+        self.documents: dict[str, KnowledgeDocument] = {}
+
+    # 保存文档状态副本
+    async def upsert(self, document: KnowledgeDocument) -> None:
+        self.documents[document.id] = document
+
+    # 根据 document ID 返回状态记录
+    async def get(self, document_id: str) -> KnowledgeDocument | None:
+        return self.documents.get(document_id)
+
+    # 删除文档状态记录
+    async def delete(self, document_id: str) -> None:
+        self.documents.pop(document_id, None)
 
 
 def _chunk(content: str = "Agent architecture details") -> KnowledgeChunk:
@@ -152,6 +196,103 @@ async def test_index_embeds_title_and_section_prefix() -> None:
     assert "section: Tools" in text
     assert "description: 主Agent与子Agent通信" in text
     assert "Agent loop details" in text
+
+
+# 功能：验证索引成功时 Qdrant store 与 lexical store 收到相同 chunks
+# 设计：注入两个内存 store 并比较 chunk ID 集合，验证双写后才标记 ready
+async def test_index_updates_vector_and_lexical_stores() -> None:
+    store = _Store()
+    lexical = _LexicalStore()
+    catalog = _Catalog()
+    service = KnowledgeService(
+        embedding=_Embedding(), store=store, lexical_store=lexical, catalog=catalog
+    )
+    document = KnowledgeDocument(id="doc-1", source="x", title="x")
+
+    await service.index(document, [_chunk()])
+
+    assert [chunk.id for chunk in store.chunks] == [chunk.id for chunk in lexical.documents["doc-1"]]
+    assert catalog.documents["doc-1"].status == "ready"
+
+
+# 功能：验证 lexical 写入失败时 Catalog 标为 failed 并可通过 reindex 修复
+# 设计：首次注入 FTS 错误后关闭故障开关重试，覆盖跨存储失败恢复路径
+async def test_lexical_index_failure_is_recorded_and_reindex_repairs() -> None:
+    store = _Store()
+    lexical = _LexicalStore()
+    lexical.fail_replace = True
+    catalog = _Catalog()
+    service = KnowledgeService(
+        embedding=_Embedding(), store=store, lexical_store=lexical, catalog=catalog
+    )
+    document = KnowledgeDocument(id="doc-1", source="x", title="x")
+
+    try:
+        await service.index(document, [_chunk()])
+    except RuntimeError as exc:
+        assert str(exc) == "fts write failed"
+    else:
+        raise AssertionError("expected lexical write failure")
+    assert catalog.documents["doc-1"].status == "failed"
+    assert "fts write failed" in str(catalog.documents["doc-1"].error_message)
+
+    lexical.fail_replace = False
+    await service.reindex(document, [_chunk()])
+
+    assert catalog.documents["doc-1"].status == "ready"
+    assert [chunk.id for chunk in lexical.documents["doc-1"]] == ["chunk-1"]
+
+
+# 功能：验证删除单边失败时仍尝试另一路并保留 failed Catalog 记录
+# 设计：使 lexical 删除失败而 vector 删除成功，确认状态不被误报为文档已删除
+async def test_delete_partial_failure_keeps_failed_catalog_record() -> None:
+    store = _Store()
+    lexical = _LexicalStore()
+    lexical.fail_delete = True
+    catalog = _Catalog()
+    document = KnowledgeDocument(id="doc-1", source="x", title="x", status="ready")
+    catalog.documents[document.id] = document
+    service = KnowledgeService(
+        embedding=_Embedding(), store=store, lexical_store=lexical, catalog=catalog
+    )
+
+    try:
+        await service.delete("doc-1")
+    except RuntimeError as exc:
+        assert "failed to delete" in str(exc)
+    else:
+        raise AssertionError("expected deletion failure")
+
+    assert store.deleted == ["doc-1"]
+    assert catalog.documents["doc-1"].status == "failed"
+
+
+# 功能：验证 Qdrant 写入失败时保留 failed 状态并由 reindex 恢复双存储
+# 设计：使 FTS 清理成功而向量 upsert 失败，再关闭故障重试以覆盖另一侧故障恢复
+async def test_vector_index_failure_is_recorded_and_reindex_repairs() -> None:
+    store = _Store()
+    store.fail_upsert = True
+    lexical = _LexicalStore()
+    catalog = _Catalog()
+    service = KnowledgeService(
+        embedding=_Embedding(), store=store, lexical_store=lexical, catalog=catalog
+    )
+    document = KnowledgeDocument(id="doc-1", source="x", title="x")
+
+    try:
+        await service.index(document, [_chunk()])
+    except RuntimeError as exc:
+        assert str(exc) == "qdrant write failed"
+    else:
+        raise AssertionError("expected vector write failure")
+    assert catalog.documents["doc-1"].status == "failed"
+    assert "doc-1" not in lexical.documents
+
+    store.fail_upsert = False
+    await service.reindex(document, [_chunk()])
+
+    assert catalog.documents["doc-1"].status == "ready"
+    assert [chunk.id for chunk in store.chunks] == [chunk.id for chunk in lexical.documents["doc-1"]]
 
 
 # 功能：验证内容 hash 对相同文本稳定且对变更文本敏感

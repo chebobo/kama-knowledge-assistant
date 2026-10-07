@@ -19,6 +19,7 @@ from kama_claude.core.knowledge.chunker.basic import BasicChunker
 from kama_claude.core.knowledge.embedding.local import LocalEmbeddingProvider
 from kama_claude.core.knowledge.models import KnowledgeDocument
 from kama_claude.core.knowledge.parser.file import FileParser
+from kama_claude.core.knowledge.retriever.lexical_store import SqliteLexicalStore
 from kama_claude.core.knowledge.service import KnowledgeService
 from kama_claude.core.knowledge.store.qdrant import QdrantVectorStore
 
@@ -28,11 +29,14 @@ EXCLUDE = {
     "chunk_baseline.md", "chunk_baseline.csv",
     "search_baseline.md", "eval_baseline.md",
     "RAG_V1_实现总结与改进方向.md",
+    "RAG_V2_HYBRID_PLAN.md", "RAG_V2_HYBRID_EXECUTION_PLAN.md",
+    "RAG_V2_HYBRID_实现总结与改进方向.md",
 }
 MODEL_DIR = Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-small-zh-v1.5"
 SNAPSHOT = next(MODEL_DIR.glob("snapshots/*")).resolve()
 QDRANT_DIR = Path.home() / ".kama" / "knowledge" / "qdrant"
 CATALOG_DB = Path.home() / ".kama" / "knowledge" / "catalog.db"
+LEXICAL_DB = Path.home() / ".kama" / "knowledge" / "lexical.db"
 COLLECTION = "kama_knowledge"
 USER_ID = "local"
 SCOPE = "global"
@@ -42,11 +46,13 @@ async def main(limit: int | None) -> None:
     embedding = LocalEmbeddingProvider(SNAPSHOT)
     store = QdrantVectorStore(QDRANT_DIR, dimension=embedding.dimension, collection=COLLECTION)
     catalog = SqliteDocumentCatalog(CATALOG_DB)
+    lexical_store = SqliteLexicalStore(LEXICAL_DB)
     service = KnowledgeService(
         parser=FileParser(),
         chunker=BasicChunker(),
         embedding=embedding,
         store=store,
+        lexical_store=lexical_store,
         catalog=catalog,
     )
 
@@ -96,6 +102,7 @@ async def main(limit: int | None) -> None:
     await asyncio.gather(*(index_one(p) for p in files))
 
     store.close()
+    await lexical_store.close()
     elapsed = time.time() - t0
     print(f"\n=== 入库完成 ===")
     print(f"处理文档 : {len(files)}")
@@ -104,6 +111,7 @@ async def main(limit: int | None) -> None:
     print(f"耗时     : {elapsed:.1f}s")
     print(f"Qdrant  : {QDRANT_DIR}")
     print(f"Catalog : {CATALOG_DB}")
+    print(f"Lexical : {LEXICAL_DB}")
 
 
 if __name__ == "__main__":

@@ -45,6 +45,8 @@ class KnowledgeSearchResult:
     # 表示一次检索命中的片段和相似度分数
     chunk: KnowledgeChunk
     score: float
+    retriever: str | None = None
+    rank: int | None = None
 
 
 @dataclass(frozen=True)
@@ -60,4 +62,3 @@ class KnowledgeIndexResult:
     document_id: str
     chunk_count: int
     skipped: bool = False
-

@@ -17,6 +17,7 @@ from kama_claude.core.knowledge.models import (
 )
 from kama_claude.core.knowledge.parser.file import FileParser
 from kama_claude.core.knowledge.retriever.base import Retriever
+from kama_claude.core.knowledge.retriever.dense import DenseRetriever
 from kama_claude.core.knowledge.store.base import VectorStore
 from kama_claude.core.knowledge.token_budget import CharacterTokenCounter, TokenCounter
 
@@ -32,10 +33,18 @@ class DocumentCatalog(Protocol):
     async def delete(self, document_id: str) -> None: ...
 
 
+class LexicalStore(Protocol):
+    # 按文档替换 lexical index 中的全部 chunks
+    async def replace_document(self, document_id: str, chunks: list[KnowledgeChunk]) -> None: ...
+
+    # 按文档删除 lexical index 中的全部 chunks
+    async def delete_document(self, document_id: str) -> None: ...
+
+
 class KnowledgeService:
     # embedding 输入策略标识：chunk 向量由 title+section+description+keywords+正文拼成，
     # 保留文档级检索信号（尤其 frontmatter 的中文描述可跨语言匹配）
-    _EMBED_STRATEGY = "title+section+meta:v2"
+    _INDEX_STRATEGY = "title+section+meta:v2+fts5:trigram:v1"
 
     # 初始化 Knowledge 服务的检索和索引依赖
     def __init__(
@@ -44,6 +53,7 @@ class KnowledgeService:
         embedding: EmbeddingProvider,
         store: VectorStore,
         retriever: Retriever | None = None,
+        lexical_store: LexicalStore | None = None,
         catalog: DocumentCatalog | None = None,
         token_counter: TokenCounter | None = None,
         max_retrieved_tokens: int = 4000,
@@ -54,7 +64,10 @@ class KnowledgeService:
             raise ValueError("max_retrieved_tokens must be positive")
         self._embedding = embedding
         self._store = store
-        self._retriever = retriever
+        self._retriever = (
+            retriever if retriever is not None else DenseRetriever(embedding=embedding, store=store)
+        )
+        self._lexical_store = lexical_store
         self._catalog = catalog
         self._token_counter = token_counter or CharacterTokenCounter()
         self._max_retrieved_tokens = max_retrieved_tokens
@@ -103,8 +116,12 @@ class KnowledgeService:
                 embeddings = await self._embedding.embed(embed_texts)
                 if len(embeddings) != len(chunks):
                     raise ValueError("embedding count does not match chunk count")
+                if self._lexical_store is not None:
+                    await self._lexical_store.delete_document(document.id)
                 await self._store.delete_document(document.id)
                 await self._store.upsert(chunks, embeddings)
+                if self._lexical_store is not None:
+                    await self._lexical_store.replace_document(document.id, chunks)
                 document.status = "ready"
                 document.indexed_at = datetime.now(UTC)
                 if self._catalog is not None:
@@ -119,7 +136,31 @@ class KnowledgeService:
 
     # 删除文档的全部向量和可选目录记录
     async def delete(self, document_id: str) -> None:
-        await self._store.delete_document(document_id)
+        errors: list[Exception] = []
+        for delete_operation in (
+            self._store.delete_document(document_id),
+            self._lexical_store.delete_document(document_id)
+            if self._lexical_store is not None
+            else None,
+        ):
+            if delete_operation is None:
+                continue
+            try:
+                await delete_operation
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            if self._catalog is not None:
+                document = await self._catalog.get(document_id)
+                if document is not None:
+                    document.status = "failed"
+                    document.error_message = "; ".join(str(error) for error in errors)
+                    await self._catalog.upsert(document)
+            message = f"failed to delete knowledge document {document_id}"
+            raise RuntimeError(message) from ExceptionGroup(
+                "knowledge document deletion failures",
+                errors,
+            )
         if self._catalog is not None:
             await self._catalog.delete(document_id)
 
@@ -151,17 +192,8 @@ class KnowledgeService:
             return []
         if top_k <= 0:
             raise ValueError("top_k must be positive")
-        embedding = await self._embedding.embed([query])
-        if len(embedding) != 1:
-            raise ValueError("query embedding provider must return one vector")
-        if self._retriever is not None:
-            return await self._retriever.retrieve(
-                query,
-                top_k=top_k,
-                filters=KnowledgeFilter(user_id=user_id, project_id=project_id),
-            )
-        return await self._store.search(
-            embedding[0],
+        return await self._retriever.retrieve(
+            query,
             top_k=top_k,
             filters=KnowledgeFilter(user_id=user_id, project_id=project_id),
         )
@@ -247,6 +279,6 @@ class KnowledgeService:
                 + "\x00"
                 + self._chunker.signature
                 + "\x00"
-                + self._EMBED_STRATEGY
+                + self._INDEX_STRATEGY
             ).encode("utf-8")
         ).hexdigest()

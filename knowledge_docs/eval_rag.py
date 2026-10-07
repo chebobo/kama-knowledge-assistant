@@ -2,7 +2,7 @@
 
 匹配规则：document 级（chunk 的 source 文件名 == 目标文档）。
 - single（主指标）：命中 expected_doc 才 rel=1
-- multi（辅助观测）：命中任一 related_docs 即 rel=1（仅对标注了 related_docs 的题生效，未标注题两口径一致）
+- multi（辅助观测）：命中任一 related_docs 即 rel=1；未标注题两口径一致
 用法：python eval_rag.py [k]
 """
 from __future__ import annotations
@@ -11,17 +11,24 @@ import asyncio
 import json
 import math
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, r"D:\tinyclaude\src")
 
 from kama_claude.core.knowledge.embedding.local import LocalEmbeddingProvider
 from kama_claude.core.knowledge.models import KnowledgeFilter
+from kama_claude.core.knowledge.retriever.base import Retriever
+from kama_claude.core.knowledge.retriever.bm25 import BM25Retriever
+from kama_claude.core.knowledge.retriever.dense import DenseRetriever
+from kama_claude.core.knowledge.retriever.hybrid import HybridRetriever
+from kama_claude.core.knowledge.retriever.lexical_store import SqliteLexicalStore
 from kama_claude.core.knowledge.store.qdrant import QdrantVectorStore
 
 MODEL_DIR = Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-small-zh-v1.5"
 SNAPSHOT = next(MODEL_DIR.glob("snapshots/*")).resolve()
 QDRANT_DIR = Path.home() / ".kama" / "knowledge" / "qdrant"
+LEXICAL_DB = Path.home() / ".kama" / "knowledge" / "lexical.db"
 GOLDEN = json.loads(
     Path(r"D:\tinyclaude\knowledge_docs\golden_set.json").read_text(encoding="utf-8")
 )
@@ -50,17 +57,28 @@ def rel_sequence(top_src: list[str], targets: set[str]) -> tuple[list[int], int,
     return rels, rank, matched
 
 
-async def main(k: int) -> None:
+async def main(k: int, mode: str) -> None:
+    if mode not in {"dense", "hybrid"}:
+        raise SystemExit("retriever mode must be 'dense' or 'hybrid'")
     embedding = LocalEmbeddingProvider(SNAPSHOT)
     store = QdrantVectorStore(QDRANT_DIR, dimension=embedding.dimension)
+    dense = DenseRetriever(embedding=embedding, store=store)
+    lexical_store = None
+    retriever: Retriever = dense
+    if mode == "hybrid":
+        lexical_store = SqliteLexicalStore(LEXICAL_DB)
+        retriever = HybridRetriever(dense=dense, bm25=BM25Retriever(lexical_store))
     filters = KnowledgeFilter(user_id="local")
+    print(
+        f"run_at={datetime.now(UTC).isoformat()} mode={mode} k={k} "
+        f"qdrant={QDRANT_DIR} lexical={LEXICAL_DB if mode == 'hybrid' else 'disabled'}"
+    )
 
     per_q = []
     for q in GOLDEN["questions"]:
         targets_single = {q["expected_doc"]}
         targets_multi = set(q.get("related_docs", [q["expected_doc"]]))
-        emb = (await embedding.embed([q["question"]]))[0]
-        hits = await store.search(emb, top_k=k, filters=filters)
+        hits = await retriever.retrieve(q["question"], top_k=k, filters=filters)
         top_src = [Path(h.chunk.source).name for h in hits]
 
         rels_s, rank_s, matched_s = rel_sequence(top_src, targets_single)
@@ -91,7 +109,10 @@ async def main(k: int) -> None:
         mark_m = "OK " if rank_m else "MISS"
         diff = "  <-multi修正" if rank_m and not rank_s else ""
         multi_note = f"  multi: rank={rank_m:>2} {mark_m}" if len(targets_multi) > 1 else ""
-        print(f"[{mark_s}] Q{q['qid']:>2} single rank={rank_s:>2}  expected={q['expected_doc']}{multi_note}{diff}")
+        print(
+            f"[{mark_s}] Q{q['qid']:>2} single rank={rank_s:>2} "
+            f"expected={q['expected_doc']}{multi_note}{diff}"
+        )
         if not rank_s:
             print(f"        top{k}={top_src[:k]}")
 
@@ -112,8 +133,11 @@ async def main(k: int) -> None:
         f"NDCG: {avg('ndcg_m'):.3f}"
     )
     store.close()
+    if lexical_store is not None:
+        await lexical_store.close()
 
 
 if __name__ == "__main__":
     k = int(sys.argv[1]) if len(sys.argv) > 1 else 5
-    asyncio.run(main(k))
+    mode = sys.argv[2] if len(sys.argv) > 2 else "dense"
+    asyncio.run(main(k, mode))

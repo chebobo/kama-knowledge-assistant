@@ -87,11 +87,44 @@
 | 命中排序 | MRR 超 V1（0.713 vs 0.709）、NDCG 接近（0.735 vs 0.755） |
 | 系统能力 | content_hash 版本因子 + 增量重建正确工作（153 重建 / 34 跳过） |
 
-**下一步（P2）**：BM25 Hybrid Search（精确关键词救 Q9/Q16/Q18 类长尾）→ Reranker（精排）→ Query Rewrite。
+**下一步**：Hybrid 已完成实现与评测；根据 Q9 单文档 chunk 霸榜仍存在，建议进入独立 Document Aggregation 评估。Query Rewrite 和 Reranker 继续后置。
 
 ## 复跑命令
 
 ```powershell
 & D:\tinyclaude\.venv\Scripts\python.exe D:\tinyclaude\knowledge_docs\eval_rag.py 5
 & D:\tinyclaude\.venv\Scripts\python.exe D:\tinyclaude\knowledge_docs\eval_rag.py 8
+& D:\tinyclaude\.venv\Scripts\python.exe D:\tinyclaude\knowledge_docs\eval_rag.py 5 hybrid
+& D:\tinyclaude\.venv\Scripts\python.exe D:\tinyclaude\knowledge_docs\eval_rag.py 8 hybrid
 ```
+
+## V2 Dense 与 Hybrid 受控对比（2026-10-07）
+
+索引版本：V2 chunker + `bge-small-zh-v1.5` + FTS5 trigram v1。全量同步后 Catalog 为 187 篇 / 2,989 chunks，FTS5 为 187 documents / 2,989 rows；两份 Hybrid 执行/设计计划不属于 Golden Set 数据集，已从索引排除。Hybrid 候选倍率为 2，RRF `k=60`。评测时间：UTC 2026-10-07 05:05-05:09。
+
+| k | Retriever | 口径 | Query Hit Rate | 严格 Recall | MRR | NDCG |
+|---:|---|---|---:|---:|---:|---:|
+| 5 | Dense | single | 0.800 (16/20) | 0.800 | 0.713 | 0.735 |
+| 5 | Hybrid | single | 0.850 (17/20) | 0.850 | 0.738 | 0.766 |
+| 5 | Dense | multi | 0.900 (18/20) | 0.792 | 0.812 | 0.757 |
+| 5 | Hybrid | multi | 0.900 (18/20) | 0.792 | 0.812 | 0.761 |
+| 8 | Dense | single | 0.800 (16/20) | 0.800 | 0.713 | 0.735 |
+| 8 | Hybrid | single | 0.900 (18/20) | 0.900 | 0.765 | 0.797 |
+| 8 | Dense | multi | 0.900 (18/20) | 0.792 | 0.812 | 0.757 |
+| 8 | Hybrid | multi | 0.950 (19/20) | 0.842 | 0.823 | 0.772 |
+
+Dense/Hybrid 命令分别为 `uv run python knowledge_docs/eval_rag.py 5 dense|hybrid` 和 `uv run python knowledge_docs/eval_rag.py 8 dense|hybrid`。评测器输出每题 rank 和 top-k 文档；Dense 与 Hybrid 使用同一个 Qdrant 索引、scope、embedding 和 Golden Set。
+
+| Query | Dense k=5 | Hybrid k=5 | Hybrid k=8 | 观察 |
+|---|---:|---:|---:|---|
+| Q3 RAG 核心思路 | single MISS / multi 1 | single 2 / multi 1 | single 3 / multi 2 | single 标签救回，相关文档靠后 |
+| Q5 多头注意力 | 1 | 2 | 3 | Hybrid 排名退后 |
+| Q9 多 Agent 通信 | single MISS / multi 1 | single MISS / multi 1 | single MISS / multi 1 | 仍被 `chapter10.md` 多 chunks 占位 |
+| Q11 MCP 协议 | 1 | 2 | 2 | Hybrid 排名退后 |
+| Q14 上下文工程 | 2 | 1 | 1 | 提升 |
+| Q16 幻觉治理 | MISS | 4 | 1 | Hybrid 在 k=5/k=8 均救回 |
+| Q17 微调 vs RAG | 4 | MISS | 8 | k=5 退化，k=8 恢复但靠后 |
+| Q18 Agent 框架对比 | MISS | MISS | MISS | 仍未解决 |
+| Q19 Workflow vs Agent | 2 | 1 | 1 | 提升 |
+
+结论：Hybrid 改善 single Recall、MRR 和 NDCG，且 Q16 的精确概念漏召回被救回；Q5/Q11/Q17 出现局部退化，multi Recall@5 没有提升，说明 BM25 trigram + RRF 并未普遍改善多文档覆盖。Q9 的单文档霸榜仍在，支持将 Document Aggregation 作为下一独立实验；评测未证明 aggregation 会增加 Recall，需保持单独对照。暂不进入 Query Rewrite 或 Reranker。
