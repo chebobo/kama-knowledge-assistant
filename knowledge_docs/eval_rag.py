@@ -32,21 +32,22 @@ def dcg(rels: list[int]) -> float:
     return sum(r / math.log2(i + 2) for i, r in enumerate(rels))
 
 
-def rel_sequence(top_src: list[str], targets: set[str]) -> tuple[list[int], int]:
-    """按目标集合计算 rel 序列与首个命中 rank（0 表示未命中）。
-    文档级去重：同一目标文档的后续 chunk 不再重复计 rel=1（每篇最多贡献一个 1）。"""
+def rel_sequence(top_src: list[str], targets: set[str]) -> tuple[list[int], int, int]:
+    """按目标集合计算 rel 序列、首个命中 rank 和相关文档命中数。"""
     rels: list[int] = []
     seen: set[str] = set()
     rank = 0
+    matched = 0
     for src in top_src:
         if src in targets and src not in seen:
             rels.append(1)
             seen.add(src)
+            matched += 1
             if rank == 0:
                 rank = len(rels)
         else:
             rels.append(0)
-    return rels, rank
+    return rels, rank, matched
 
 
 async def main(k: int) -> None:
@@ -62,25 +63,26 @@ async def main(k: int) -> None:
         hits = await store.search(emb, top_k=k, filters=filters)
         top_src = [Path(h.chunk.source).name for h in hits]
 
-        rels_s, rank_s = rel_sequence(top_src, targets_single)
-        rels_m, rank_m = rel_sequence(top_src, targets_multi)
+        rels_s, rank_s, matched_s = rel_sequence(top_src, targets_single)
+        rels_m, rank_m, matched_m = rel_sequence(top_src, targets_multi)
 
-        def metrics(rels, rank):
-            recall = 1.0 if rank else 0.0
+        def metrics(rels, rank, target_count, matched_count):
+            query_hit = 1.0 if rank else 0.0
+            recall = matched_count / target_count
             mrr = 1.0 / rank if rank else 0.0
-            # multi 口径下可能多个 rel=1：NDCG 的 IDCG = 相关文档数完美排序的增益
-            idcg = dcg([1] * sum(rels)) or 1.0
+            # IDCG 使用评测集合中的相关文档数，而不是当前结果中已命中的数量
+            idcg = dcg([1] * min(target_count, k)) or 1.0
             ndcg = dcg(rels) / idcg
-            return recall, mrr, ndcg
+            return query_hit, recall, mrr, ndcg
 
-        r_s = metrics(rels_s, rank_s)
-        r_m = metrics(rels_m, rank_m)
+        r_s = metrics(rels_s, rank_s, len(targets_single), matched_s)
+        r_m = metrics(rels_m, rank_m, len(targets_multi), matched_m)
         per_q.append({
             "qid": q["qid"], "expected": q["expected_doc"],
             "related": sorted(targets_multi),
             "rank_s": rank_s, "rank_m": rank_m,
-            "recall_s": r_s[0], "mrr_s": r_s[1], "ndcg_s": r_s[2],
-            "recall_m": r_m[0], "mrr_m": r_m[1], "ndcg_m": r_m[2],
+            "hit_s": r_s[0], "recall_s": r_s[1], "mrr_s": r_s[2], "ndcg_s": r_s[3],
+            "hit_m": r_m[0], "recall_m": r_m[1], "mrr_m": r_m[2], "ndcg_m": r_m[3],
             "top_src": top_src,
         })
 
@@ -99,8 +101,16 @@ async def main(k: int) -> None:
         return sum(x[key] for x in per_q) / n
 
     print(f"\n=== 汇总 (k={k}, {n} 问, document 级) ===")
-    print(f"[single 主指标] Recall@{k}: {avg('recall_s'):.3f} ({sum(x['recall_s'] for x in per_q)}/{n})  MRR: {avg('mrr_s'):.3f}  NDCG: {avg('ndcg_s'):.3f}")
-    print(f"[multi  辅助]  Recall@{k}: {avg('recall_m'):.3f} ({sum(x['recall_m'] for x in per_q)}/{n})  MRR: {avg('mrr_m'):.3f}  NDCG: {avg('ndcg_m'):.3f}")
+    print(
+        f"[single 主指标] Query Hit Rate@{k}: {avg('hit_s'):.3f}  "
+        f"Recall@{k}: {avg('recall_s'):.3f}  MRR: {avg('mrr_s'):.3f}  "
+        f"NDCG: {avg('ndcg_s'):.3f}"
+    )
+    print(
+        f"[multi  辅助]  Query Hit Rate@{k}: {avg('hit_m'):.3f}  "
+        f"Recall@{k}: {avg('recall_m'):.3f}  MRR: {avg('mrr_m'):.3f}  "
+        f"NDCG: {avg('ndcg_m'):.3f}"
+    )
     store.close()
 
 
