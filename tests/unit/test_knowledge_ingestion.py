@@ -39,7 +39,14 @@ class _Store:
 # 设计：使用真实临时文本内容和 fake embedding/store，覆盖 parser、chunker、catalog 的完整索引链路
 async def test_index_file_pipeline(tmp_path: Path) -> None:
     source = tmp_path / "agent.md"
-    source.write_text("# Architecture\n\nAgent loop details.\n\n## Tools\n\nTool registry.", encoding="utf-8")
+    source.write_text(
+        "# Architecture\n\n"
+        "Agent loop details with enough content to exceed the minimum chunk size "
+        "so this section is retained by the chunker.\n\n"
+        "## Tools\n\n"
+        "Tool registry and invocation details that are long enough to be kept as well.",
+        encoding="utf-8",
+    )
     catalog = SqliteDocumentCatalog(tmp_path / "catalog.db")
     store = _Store()
     service = KnowledgeService(embedding=_Embedding(), store=store, catalog=catalog)
@@ -62,19 +69,27 @@ async def test_index_file_pipeline(tmp_path: Path) -> None:
 # 设计：先完成一次真实文件索引，再通过 ID 重建，确认调用方不需要手持 chunks
 async def test_reindex_by_document_id(tmp_path: Path) -> None:
     source = tmp_path / "notes.txt"
-    source.write_text("first version", encoding="utf-8")
+    source.write_text(
+        "first version with enough content to exceed the minimum chunk size threshold.",
+        encoding="utf-8",
+    )
     catalog = SqliteDocumentCatalog(tmp_path / "catalog.db")
     store = _Store()
     service = KnowledgeService(embedding=_Embedding(), store=store, catalog=catalog)
     document = KnowledgeDocument(id="doc-1", source=str(source), title="Notes")
     await service.index(document)
 
-    source.write_text("second version", encoding="utf-8")
+    source.write_text(
+        "second version with different content that is also long enough for indexing.",
+        encoding="utf-8",
+    )
     result = await service.reindex("doc-1")
 
     assert result.chunk_count == 1
     assert len(store.upserted) == 2
-    assert store.upserted[-1][0][0].content == "second version"
+    assert store.upserted[-1][0][0].content == (
+        "second version with different content that is also long enough for indexing."
+    )
 
 
 # 功能：验证 parser 失败时 Catalog 会记录 failed 状态和错误信息
@@ -97,4 +112,27 @@ async def test_index_failure_updates_catalog(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.status == "failed"
     assert loaded.error_message
+
+
+# 功能：验证 FileParser 提取 frontmatter 标题和描述作为文档元数据
+# 设计：构造带 YAML frontmatter 的 Markdown，断言 parsed.title 取 frontmatter title、
+#       description/keywords 进入 metadata
+def test_parser_extracts_frontmatter(tmp_path: Path) -> None:
+    from kama_claude.core.knowledge.parser.file import FileParser
+
+    source = tmp_path / "agent.md"
+    source.write_text(
+        "---\n"
+        "title: 多Agent架构面试全解析\n"
+        "description: 深度拆解主Agent子Agent通信\n"
+        "keywords: [多Agent, Agent通信, 编排]\n"
+        "---\n"
+        "# 正文标题\n\n正文内容。",
+        encoding="utf-8",
+    )
+    parsed = FileParser().parse(source)
+    assert parsed.title == "多Agent架构面试全解析"
+    assert parsed.metadata["description"] == "深度拆解主Agent子Agent通信"
+    assert "多Agent" in parsed.metadata["keywords"]
+    assert "Agent通信" in parsed.metadata["keywords"]
 

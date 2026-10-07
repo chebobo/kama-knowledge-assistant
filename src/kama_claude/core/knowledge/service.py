@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from kama_claude.core.knowledge.chunker.basic import BasicChunker
 from kama_claude.core.knowledge.embedding.base import EmbeddingProvider
@@ -33,6 +33,10 @@ class DocumentCatalog(Protocol):
 
 
 class KnowledgeService:
+    # embedding 输入策略标识：chunk 向量由 title+section+description+keywords+正文拼成，
+    # 保留文档级检索信号（尤其 frontmatter 的中文描述可跨语言匹配）
+    _EMBED_STRATEGY = "title+section+meta:v2"
+
     # 初始化 Knowledge 服务的检索和索引依赖
     def __init__(
         self,
@@ -71,7 +75,7 @@ class KnowledgeService:
                     document.title = document.title or parsed.title
                     document.mime_type = parsed.mime_type
                     document.metadata = {**document.metadata, **parsed.metadata}
-                    document.content_hash = self.content_hash(parsed.content)
+                    document.content_hash = self.content_hash(parsed.content, document.title)
                     chunks = await asyncio.to_thread(self._chunker.chunk, document, parsed)
                 if not chunks:
                     raise ValueError("cannot index a document without chunks")
@@ -93,7 +97,10 @@ class KnowledgeService:
                 document.error_message = None
                 if self._catalog is not None:
                     await self._catalog.upsert(document)
-                embeddings = await self._embedding.embed([chunk.content for chunk in chunks])
+                embed_texts = [
+                    self._embed_text(chunk, document.metadata) for chunk in chunks
+                ]
+                embeddings = await self._embedding.embed(embed_texts)
                 if len(embeddings) != len(chunks):
                     raise ValueError("embedding count does not match chunk count")
                 await self._store.delete_document(document.id)
@@ -212,7 +219,34 @@ class KnowledgeService:
             return self._token_counter.truncate(formatted, self._max_retrieved_tokens)
         return formatted
 
-    # 根据文档内容生成稳定 hash，供目录实现判断是否变化
+    # 构造 chunk 的 embedding 输入：标题 + section + 描述/关键词 + 正文，保留文档级检索信号
     @staticmethod
-    def content_hash(content: str) -> str:
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+    def _embed_text(chunk: KnowledgeChunk, metadata: dict[str, Any]) -> str:
+        parts: list[str] = []
+        if chunk.title:
+            parts.append(f"title: {chunk.title}")
+        section = chunk.metadata.get("section", "") if chunk.metadata else ""
+        if section:
+            parts.append(f"section: {section}")
+        for key in ("description", "keywords", "tags"):
+            value = metadata.get(key)
+            if value:
+                parts.append(f"{key}: {value}")
+        parts.append(chunk.content)
+        return "\n".join(parts)
+
+    # 根据文档内容、标题和切分策略生成稳定 hash，供目录实现判断是否需要重新索引
+    def content_hash(self, content: str, title: str = "") -> str:
+        # 拼入标题、chunker 签名和 embedding 策略：任一索引输入变化都会让 hash 失效，
+        # 从而自动触发全量重建
+        return hashlib.sha256(
+            (
+                title
+                + "\x00"
+                + content
+                + "\x00"
+                + self._chunker.signature
+                + "\x00"
+                + self._EMBED_STRATEGY
+            ).encode("utf-8")
+        ).hexdigest()

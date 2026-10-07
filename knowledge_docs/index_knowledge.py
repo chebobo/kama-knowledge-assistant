@@ -24,7 +24,11 @@ from kama_claude.core.knowledge.store.qdrant import QdrantVectorStore
 
 ROOT = Path(r"D:\tinyclaude\knowledge_docs")
 # 非知识文档：分析报告、基线数据等不入知识库
-EXCLUDE = {"chunk_baseline.md", "chunk_baseline.csv"}
+EXCLUDE = {
+    "chunk_baseline.md", "chunk_baseline.csv",
+    "search_baseline.md", "eval_baseline.md",
+    "RAG_V1_实现总结与改进方向.md",
+}
 MODEL_DIR = Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-small-zh-v1.5"
 SNAPSHOT = next(MODEL_DIR.glob("snapshots/*")).resolve()
 QDRANT_DIR = Path.home() / ".kama" / "knowledge" / "qdrant"
@@ -71,7 +75,8 @@ async def main(limit: int | None) -> None:
         rel = str(path.relative_to(ROOT))
         doc_id = "doc_" + hashlib.sha256(rel.encode("utf-8")).hexdigest()[:12]
         doc = KnowledgeDocument(
-            id=doc_id, source=str(path), title=path.stem,
+            # title 传空：让 FileParser 提取 frontmatter 的中文标题；无 frontmatter 时回退文件名
+            id=doc_id, source=str(path), title="",
             scope=SCOPE, user_id=USER_ID,
         )
         async with semaphore:

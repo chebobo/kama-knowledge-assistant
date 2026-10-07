@@ -3,7 +3,7 @@
     "created": "2026-10-06",
     "standard": "golden-set: 每问人工标注预期文档（document 级 ground truth）+ 预期 section（已对照原文章节结构验证）",
     "match_rule": "document 级匹配：命中 chunk 的 source 文件名 == expected_doc 即为相关（rel=1），否则 rel=0",
-    "index_version": "V1 BasicChunker (1600/200, 含 frontmatter, 含空壳)",
+    "index_version": "V2 chunker+meta注入 (2026-10-07)：跳frontmatter/滤空壳/段落边界 + title/desc注入 + content_hash版本因子",
     "verified": "20/20 预期文档存在，relevant_sections 已逐篇对照标题结构"
   },
   "questions": [

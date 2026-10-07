@@ -18,8 +18,12 @@ class _Embedding:
     # 初始化固定维度的 embedding 测试替身
     dimension: int = 2
 
+    # 记录最近一次输入的文本列表，便于断言标题注入
+    last_texts: list[str] | None = None
+
     # 为每段文本返回固定向量，避免依赖真实模型
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.last_texts = list(texts)
         return [[1.0, 0.0] for _ in texts]
 
 
@@ -127,12 +131,36 @@ async def test_empty_query_returns_no_results() -> None:
     assert store.filters == []
 
 
+# 功能：验证索引时 embedding 输入包含标题、section 和描述前缀（元数据注入）
+# 设计：fake embedding 记录输入文本，断言 title/section/description 参与向量计算而不只是正文
+async def test_index_embeds_title_and_section_prefix() -> None:
+    store = _Store()
+    embedding = _Embedding()
+    service = KnowledgeService(embedding=embedding, store=store)
+    document = KnowledgeDocument(
+        id="doc-1", source="x", title="Agent Architecture",
+        metadata={"description": "主Agent与子Agent通信"},
+    )
+    chunk = _chunk("Agent loop details")
+    chunk.metadata = {"section": "Tools", "chunk_index": 0}
+
+    await service.index(document, [chunk])
+
+    assert embedding.last_texts is not None
+    text = embedding.last_texts[0]
+    assert "title: Agent Architecture" in text
+    assert "section: Tools" in text
+    assert "description: 主Agent与子Agent通信" in text
+    assert "Agent loop details" in text
+
+
 # 功能：验证内容 hash 对相同文本稳定且对变更文本敏感
-# 设计：使用服务的纯函数接口覆盖 Document Catalog 判断增量索引的基础不变量
+# 设计：使用服务的默认实例覆盖 Document Catalog 判断增量索引的基础不变量
 def test_content_hash_is_stable() -> None:
-    first = KnowledgeService.content_hash("same")
-    second = KnowledgeService.content_hash("same")
-    changed = KnowledgeService.content_hash("changed")
+    service = KnowledgeService(embedding=_Embedding(), store=_Store())
+    first = service.content_hash("same")
+    second = service.content_hash("same")
+    changed = service.content_hash("changed")
 
     assert first == second
     assert first != changed

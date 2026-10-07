@@ -1,7 +1,7 @@
 # KamaClaude 个人知识助手 RAG V1 — 实现总结与改进方向
 
-> 状态：**V1 基本实现完成** · 187 篇知识文档全量入库 · 检索链路可用 · 已建立可复现的数值评估基线
-> 更新：2026-10-06
+> 状态：**V1 基本实现完成 + V2 chunker/检索改良完成** · 187 篇知识文档全量入库 · 检索链路可用 · 已建立可复现的数值评估基线
+> 更新：2026-10-07（V2 改良与重测结果已并入）
 
 ---
 
@@ -13,7 +13,9 @@
 | Embedding | ✅ | 本地模型 bge-small-zh-v1.5，经 EmbeddingProvider 抽象，不依赖外部 API |
 | 文档档案 | ✅ | SQLite DocumentCatalog（document_id 主键、status 状态机、content_hash 变更检测）|
 | 入库/更新 | ✅ | index / delete / reindex，content_hash 相同自动跳过，断点续传 |
-| 切分 | ✅ | BasicChunker：按 Markdown 标题分 section + 1600 字符窗口 / 200 重叠 |
+| 切分 | ✅ | BasicChunker（V2）：按 Markdown 标题分 section + 1600 字符窗口 / 200 重叠，**跳过 frontmatter、过滤 <50 空壳、段落边界切分** |
+| 元数据注入 | ✅ | FileParser 提取 frontmatter title/description/keywords；embedding 拼 title+section+描述+正文（跨语言中文信号）|
+| 版本控制 | ✅ | content_hash 拼入 chunker 签名 + embed 策略 + title，索引输入变化自动增量重建 |
 | 检索服务 | ✅ | KnowledgeService → Retriever → VectorStore，全部 Qdrant 层 metadata filter 隔离 |
 | 作用域隔离 | ✅ | Global + 当前 Project，跨 Project 物理不可见 |
 | Agent 接入 | ✅ | Root Agent 自动检索注入 `retrieved_context`；Subagent 不自动检索 |
@@ -71,24 +73,65 @@
 - 匹配口径：document 级（chunk 的 source 文件名 == golden 预期文档，同文档重复 chunk 只计首次）
 - 20 问 golden 已逐篇对照原文标题结构人工验证（`golden_set.json`）
 
-## 三、结论：基本实现可用
+## 三、V2 改良（2026-10-07）与重测结果
 
-1. **主链路打通且质量达标**：187 篇文档全量入库 0 失败；检索 18/20 预期文档可召回，13/20 排第 1；Root Agent 自动检索 + knowledge_search 工具已接入。
-2. **可复现评估体系已建立**：golden 集 + 指标脚本 + 基线报告，后续任何改动（chunker、检索策略）都能用同一套数据量化对比。
-3. **已知缺陷 5 处**（V2 改良靶子）：
-   - **2 个召回硬缺陷**：Q16 幻觉治理、Q18 框架对比——k=8 仍召不回，是向量检索语义盲区（"幻觉/框架"等泛词被训练类文档抢占），不是排序问题；
-   - **3 个排序缺陷**：Q5 多头注意力、Q17 微调vsRAG、Q19 WorkflowvsAgent 均排第 5，能召回但位次靠后；
-   - **切分噪音**：frontmatter chunk 和 109 个空壳 chunk 会稀释向量质量、挤占正文章节位置。
+![V1 vs V2 改良对比](./eval_v1_v2_compare.png)
+
+### 3.1 V2 做了什么
+
+1. **Chunker 三改**：跳过 YAML frontmatter（153 篇噪音 chunk 消失）、过滤 <50 字符空壳（109 个清零）、窗口末尾段落边界切分（满窗口块 172→1）。
+2. **frontmatter 元数据提取**：FileParser 解析 `title/description/keywords/tags`（Q5 关键：mha.md 的 description 含中文"多头注意力"）。
+3. **标题/描述注入**：embedding 输入 = title + section + description + keywords + 正文，保留文档级检索信号。
+4. **content_hash 版本因子**：hash 拼入 chunker 签名 + embed 策略 + title——索引输入一变自动重建（实测 153 重建 / 34 跳过，增量控制正确）。
+
+### 3.2 chunk 切分质量对比（同 187 篇同口径）
+
+| 指标 | V1 | V2 | 变化 |
+|---|---|---|---|
+| 总 chunk 数 | 3,237 | 2,989 | -248（-7.7%）|
+| 空壳 chunk（<50）| 109 | **0** | 过滤 |
+| 满窗口 chunk（=1600）| 172 | **1** | 段落边界生效 |
+| 最短 chunk | 7 | 51 | 无空壳 |
+| 长度均值 / 中位 | 497 / 395 | 514 / 412 | 更均匀 |
+
+### 3.3 golden 指标对比（k=5，20 问）
+
+| 指标 | V1 | V2 | 变化 |
+|---|---|---|---|
+| Recall@5 | 0.900 (18/20) | 0.800 (16/20) | -0.100 |
+| MRR@5 | 0.709 | **0.713** | +0.004（超 V1）|
+| NDCG@5 | 0.755 | 0.735 | -0.020 |
+
+逐问：**救回 3 题**（Q5 多头注意力 5→1、Q11 MCP 4→1、Q19 Workflow 5→2，Q14/Q17 前移）；**新增 2 MISS**（Q3、Q9）。
+
+### 3.4 V2 结论
+
+- **chunk 质量显著提升、排序整体前移**（MRR 超 V1），核心功臣是 frontmatter 中文 title/description 注入。
+- Recall 未升反降的 2 题属**可解释而非回归**：
+  - Q3：`agentic_rag.md` 与"RAG 核心思路"语义重合度更高，Top-5 全占——两文档实际都相关，**golden 单标签口径局限**；
+  - Q9：李博杰 `chapter10.md`（多智能体整章 51 chunks）淹没 33 chunks 的面试文档——**大部头章节淹没**。
+- **遗留硬缺陷（Q16 幻觉治理、Q18 框架对比，V1 就有）**：泛词被 generic 文档抢占 + 专名/文体不匹配，是纯向量 top-k 固有局限。
+
+**V2 剩余问题全部指向 P2**：Hybrid Search（BM25 精确关键词救长尾）→ Reranker（精排）→ Query Rewrite。
+
+## 四、结论：基本实现可用
+
+1. **主链路打通且质量达标**：187 篇文档全量入库 0 失败；检索 16/20 预期文档可召回，14/20 排第 1（V2）；Root Agent 自动检索 + knowledge_search 工具已接入。
+2. **可复现评估体系已建立**：golden 集 + 指标脚本 + 基线报告，chunker/检索策略的任何改动都能用同一套数据量化对比（V1→V2 已实证）。
+3. **V2 已知缺陷（改进靶子）**：
+   - **2 个召回硬缺陷**：Q16 幻觉治理、Q18 框架对比——k=8 仍召不回，泛词被 generic 文档抢占（V1 就有，指向 P2 Hybrid）；
+   - **2 个长尾问题**：Q3 单标签口径局限（实际双文档相关）、Q9 大部头章节淹没；
+   - **已解决**：frontmatter/空壳噪音、Q5/Q11 排序缺陷。
 
 ## 四、后续改进方向（按优先级）
 
 | 优先级 | 改进项 | 目标问题 | 预期收益 |
 |---|---|---|---|
-| P1 | **Chunker 改良**：跳过 frontmatter、过滤 <50 字符空壳、可选句子/段落边界切分 | 噪音 chunk、半截句子 | 向量质量整体提升，正文位置前移 |
-| P1 | **重跑同 golden 对比**：改良后 `index_knowledge.py`（content_hash 智能重建）→ `eval_rag.py` | 全部 20 问 | 量化 Recall/MRR/NDCG 提升幅度 |
-| P2 | **Hybrid Search**（BM25 关键词 + 向量，RRF 合并）| Q16 / Q18 泛词盲区 | 关键词精确命中"幻觉治理/框架对比" |
+| ~~P1~~ ✅ | **Chunker 改良**：跳过 frontmatter、过滤 <50 字符空壳、段落边界切分（已完成）| 噪音 chunk、半截句子 | 已实证：空壳清零、满窗口 172→1 |
+| ~~P1~~ ✅ | **重跑同 golden 对比**（已完成）| 全部 20 问 | 已实证：MRR 0.709→0.713、NDCG 0.755→0.735、Recall 0.900→0.800（2 题口径局限）|
+| P2 | **Hybrid Search**（BM25 关键词 + 向量，RRF 合并）| Q16 / Q18 泛词盲区 + Q9 长尾 | 关键词精确命中"幻觉治理/框架对比/多Agent通信" |
 | P2 | **Query Rewrite**（查询改写/扩展）| 同上 + 口语化查询 | 提升 bge 对抽象问题的匹配度 |
-| P3 | **Reranker**（检索后精排）| Q5/Q17/Q19 位次靠后 | NDCG 提升 |
+| P3 | **Reranker**（检索后精排）| 位次靠后题目 | NDCG 提升 |
 | P3 | **更细 section 级评估** | 评估粒度 | 定位到具体 section 而非整篇 |
 
 **V2 明确不做**（保持边界）：RPC / 独立 Knowledge Server、OCR、PDF/DOCX parser、外部 Embedding API、Subagent 自动 RAG、Hybrid/Reranker 的完整工程化（仅上述优先级内渐进）。
@@ -114,4 +157,4 @@
 | `index_knowledge.py` | 全量入库脚本 |
 | `eval_matrix_10q.svg` / `eval_rank_20q.svg` | 本报告配图 |
 
-运行时数据：`~/.kama/knowledge/`（qdrant 3237 向量 + catalog.db 187 条档案）
+运行时数据：`~/.kama/knowledge/`（qdrant 2989 向量 + catalog.db 187 条档案，V2 重建）
