@@ -197,7 +197,7 @@ document_aggregation = "sum"
 
 ### 5.5 真实 Agent 端到端验证凭证（真实 daemon + 真实 LLM，2026-10-07）
 
-**环境**：`~/.kama/config.toml`（knowledge enabled + hybrid + `document_aggregation="sum"`）+ `.env`（真实 LLM：`deepseek-v4-pro` via ）+ 真实 daemon（`kama-core` 监听 127.0.0.1:7437）+ CLI/TUI 客户端。知识库 187 文档、2989 向量已索引。
+**环境**：`~/.kama/config.toml`（knowledge enabled + hybrid + `document_aggregation="sum"`）+ `.env`（真实 LLM：`deepseek-v4-pro`）+ 真实 daemon（`kama-core` 监听 127.0.0.1:7437）+ CLI/TUI 客户端。知识库 187 文档、2989 向量已索引。
 
 **验证方式**：在真实 Agent 会话中直接提问，观察（1）自动检索注入；（2）LLM 是否自主调用 `knowledge_search`（改查询词）；（3）是否 `read_file` 读知识库原文；（4）回答是否引用知识库内容。全程记录在 daemon trace（`~/.kama/traces/daemon.jsonl`）。
 
