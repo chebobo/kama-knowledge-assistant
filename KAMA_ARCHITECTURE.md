@@ -41,7 +41,7 @@ kama-tui   -> kama_claude.tui.__main__:main
 
 ### kama-core
 
-主要入口是 src/kama_claude/core/app.py。CoreApp.run() 负责加载配置、初始化日志和可选 TraceWriter、初始化 PermissionManager/EventBus/IpcEventBroadcaster、启动 MCP Server、创建 SessionManager 和 AgentRunner 工厂、注册 RPC handlers，并等待信号优雅退出。
+主要入口是 src/kama_claude/core/app.py。CoreApp.run() 负责加载配置、初始化日志和可选 TraceWriter、初始化 PermissionManager/EventBus/IpcEventBroadcaster、启动 MCP Server、构建可选 KnowledgeService（初始化失败时降级为 disabled，不影响 daemon 启动）、创建 SessionManager 和 AgentRunner 工厂、注册 RPC handlers，并等待信号优雅退出。
 
 采用常驻 daemon 的原因：
 
@@ -113,7 +113,7 @@ Runner 作为装配层，可以让 AgentLoop 不知道 Session、MCP、权限和
 
 ExecutionContext 保存一次 run 的 goal、消息、global/project/session context、步骤、状态、失败原因和最终结果，并负责追加 assistant/tool messages 和组合 system prompt。
 
-它是一次 run 的状态对象，不是独立 Context 服务。因此新增 RAG 时应在此文件增加 retrieved_context 等字段，不应新建 core/context/ 包。
+它是一次 run 的状态对象，不是独立 Context 服务。RAG 的 `retrieved_context`、`user_id`、`project_id` 字段即定义于此文件，未新建 `core/context/` 包。
 
 ### 3.7 AgentLoop
 
@@ -240,7 +240,7 @@ SessionManager
 
 项目用 dataclass 表达运行时配置，用 tomllib 解析 TOML，用 python-dotenv 加载 .env。手工严格解析可以及时发现未知配置键和类型错误，且不需要引入复杂配置框架。
 
-项目要求 Python >=3.12,<3.13，使用 uv 管理环境和 lockfile。
+项目要求 Python >=3.12,<3.13，使用 uv 管理环境（lockfile 由 uv 本地生成，不入库）。
 
 主要运行时依赖及原因：
 
@@ -274,10 +274,11 @@ Unit 测试覆盖 Context、Loop、Runner、Session、Socket、Tool、Permission
 主要持久化位置：
 
 ```text
-~/.kama/sessions/    Session 数据
-~/.kama/policy.toml  权限策略
-~/.kama/traces/      daemon trace
-runs/                非 session run 数据
+~/.kama/sessions/     Session 数据
+~/.kama/policy.toml   权限策略
+~/.kama/traces/       daemon trace
+~/.kama/knowledge/    RAG 数据（qdrant 向量库 + lexical.db + catalog.db）
+runs/                 非 session run 数据
 ```
 
 日志用于诊断，events 用于单次 run 回放，trace 用于记录 IPC、事件和 LLM 层操作。三层记录分别服务于实时界面、回放和问题排查。
@@ -298,36 +299,51 @@ AgentLoop
   └── 保持原有执行循环不变
 ```
 
-Knowledge 内部边界：
+Knowledge 内部边界（V2 现状）：
 
 ```text
 KnowledgeService
-  ├── Parser
-  ├── Chunker
-  ├── EmbeddingProvider
-  ├── VectorStore
-  ├── Retriever
-  └── SQLite Document Catalog
+  ├── Parser / Chunker            # Markdown 分段 + 1600 字符窗口 + 200 overlap，frontmatter 注入 metadata
+  ├── EmbeddingProvider           # 本地 bge-small-zh-v1.5（512 维）
+  ├── Retriever                   # HybridRetriever（默认检索路径）
+  │     ├── DenseRetriever        #   Qdrant Local（kama_knowledge, cosine）
+  │     ├── BM25Retriever         #   SQLite FTS5 trigram（lexical.db，中文字符级索引）
+  │     └── RRF Fusion            #   k=60；可选 document_aggregation="sum"（文档级聚合，opt-in）
+  ├── VectorStore                 # Qdrant Local；metadata filter 在存储层做 scope 隔离
+  ├── TokenBudget                 # bge tokenizer 计数；max_retrieved_tokens=4000
+  └── SQLite Document Catalog     # document 级状态机（pending/indexing/ready/failed/deleted + content_hash 增量）
 ```
+
+检索链路：query → Dense（Qdrant）+ BM25（FTS5）各取 2×top_k 候选 → RRF 融合 → （可选 sum 文档聚合）→ top_k=8 → Token Budget 截断 → `retrieved_context`。
+
+评测体系（knowledge_docs/）：20 问 golden set（single 主 / multi 辅助双口径）、eval_rag.py / eval_rag_aggregation.py、Recall@5 / MRR@5 / NDCG@5。V1→V2→Hybrid→Agg 实测：single Recall 0.800 → 0.900 → 0.950（k=8，真实 Qdrant）。
 
 这样可以让 AgentLoop 继续只负责 LLM/tool execution，让 AgentRunner 只负责依赖组装，并支持未来从 Qdrant Local 切换到 Qdrant Server。
 
 ## 9. 重要边界
 
-不要：
+### V1 决策历史（2026-10 冻结，已执行）
 
 ```text
-新建 core/context/ 包
+不新建 core/context/ 包
 把 RAG 查询硬编码到 AgentLoop
 让 AgentRunner 直接调用 Qdrant
 让 LLM 自由指定 project_id
 把 Knowledge 和 Memory 合并
 把 MCP 和 Knowledge 写成一个模块
 让 RAG 初始化失败阻止 daemon 启动
-在 V1 引入 RPC、Hybrid、Reranker 或 Query Rewrite
+不在 V1 引入 RPC / Reranker / Query Rewrite
 ```
 
-应当：
+### V2 现状（2026-10 已实现）
+
+```text
+Hybrid Search（Dense + BM25 + RRF）已实现并接入默认检索路径
+document_aggregation="sum" 为 opt-in 生产策略（默认保持 chunk top-k）
+仍不引入：Knowledge RPC、Reranker、Query Rewrite（后续路线）
+```
+
+### 应当保持
 
 ```text
 通过 ExecutionContext 传递 scope
