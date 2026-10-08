@@ -60,7 +60,7 @@ kama-core (daemon)
 Windows（PowerShell）或 macOS/Linux（bash）：
 
 ```powershell
-git clone <repo> && cd KamaClaude
+git clone https://github.com/chebobo/kama-knowledge-assistant.git && cd kama-knowledge-assistant
 uv sync
 cp .env.example .env        # 按需修改（LLM API key 等）
 
