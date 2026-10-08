@@ -1,9 +1,19 @@
-# KamaClaude — Local AI Agent with Personal Knowledge (RAG)
+# Kama Knowledge Assistant
 
-> 本地 AI Agent 系统 + 个人知识助手。`kama-core` 常驻守护进程处理 Agent / Session /
-> Tool / Permission / MCP / 事件流；`kama` CLI 与 `kama-tui`（Textual）通过 TCP
-> loopback 通信。内置一套从零实现的 RAG 知识库子系统（Qdrant + Hybrid Search +
-> Document Aggregation），带可复现的评测基线。
+> 基于开源 [KamaClaude](https://github.com/youngyangyang04/KamaClaude)（MIT）逐行学习并二次开发的**本地 AI Agent + 个人知识助手**。
+> `kama-core` 常驻守护进程处理 Agent / Session / Tool / Permission / MCP / 事件流；`kama` CLI 与 `kama-tui`（Textual）通过 TCP loopback 通信。
+> 在原作者 Agent 框架之上，从零实现了一套完整的 RAG 知识库子系统（Qdrant + Hybrid Search + Document Aggregation），带可复现的评测基线。
+
+## 项目来源与贡献边界
+
+本项目 fork 自开源项目 [KamaClaude](https://github.com/youngyangyang04/KamaClaude)（MIT License，© 2026 程序员Carl）。作者以学习为目的逐行阅读并改造原项目，原项目提供了 Agent 框架基础（daemon / CLI / TUI / Session / Tool / Permission / MCP / 事件流）。本仓库新增内容（原项目不包含）：
+
+- **RAG 知识库子系统**（核心增量）：Qdrant Local 向量检索 + 本地 `bge-small-zh-v1.5` Embedding + SQLite FTS5 trigram BM25 词法检索 + RRF 混合融合 + sum 文档级聚合；
+- **量化评测体系**：20 问 golden set、single/multi 双口径、Hit / Recall / MRR / NDCG、固定候选池受控实验；
+- **Agent 集成**：Root Agent 自动检索注入、`knowledge_search` 工具（scope 隔离）、token 预算控制、RAG 故障降级；
+- **工程修复与验证**：Windows 信号处理兼容、真实 Agent 端到端验证（Q9 / Q18 实跑凭证）。
+
+原项目 LICENSE 完整保留（见 [LICENSE](./LICENSE)），新增代码同样遵循 MIT。
 
 ## Highlights
 
