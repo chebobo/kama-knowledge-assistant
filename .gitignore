@@ -33,3 +33,10 @@ knowledge_docs/*.pdf
 
 # 根目录学习笔记（个人备忘，不入库）
 /FTS5_BM25_RRF_检索机制学习笔记.md
+
+# 已解除跟踪的内部文档/脚本（本地保留，不入库）
+/RAG_V1_EXECUTION_PLAN.md
+/trace_permission_flow.py
+knowledge_docs/RAG_V2_HYBRID_EXECUTION_PLAN.md
+knowledge_docs/RAG_V2_HYBRID_PLAN.md
+knowledge_docs/hybrid_fts5_chinese_tokenizer.png
