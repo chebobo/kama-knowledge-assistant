@@ -31,6 +31,13 @@ EXCLUDE = {
     "RAG_V1_实现总结与改进方向.md",
     "RAG_V2_HYBRID_PLAN.md", "RAG_V2_HYBRID_EXECUTION_PLAN.md",
     "RAG_V2_HYBRID_实现总结与改进方向.md",
+    # 中间产物：QueryRewrite 相关方案/报告/检查清单不入知识库
+    "QueryRewrite_前置核查报告.md",
+    "QueryRewrite_实现总结与改进方向.md",
+    "QueryRewrite_阶段进展与问题记录_2026-10-10.md",
+    "RAG_V3_QueryRewrite_方案.md",
+    "给Codex的实施前置检查清单.md",
+    "report.md",
 }
 MODEL_DIR = Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-small-zh-v1.5"
 SNAPSHOT = next(MODEL_DIR.glob("snapshots/*")).resolve()
@@ -49,7 +56,7 @@ async def main(limit: int | None) -> None:
     lexical_store = SqliteLexicalStore(LEXICAL_DB)
     service = KnowledgeService(
         parser=FileParser(),
-        chunker=BasicChunker(),
+        chunker=BasicChunker(tokenizer=embedding.tokenizer),
         embedding=embedding,
         store=store,
         lexical_store=lexical_store,

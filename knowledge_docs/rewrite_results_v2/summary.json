@@ -1,0 +1,307 @@
+{
+  "run_at": "2026-10-10T07:27:28.133002+00:00",
+  "scope": "phase1_evaluation_orchestration_only",
+  "configuration": {
+    "rewrite_enabled": true,
+    "top_k": 8,
+    "candidate_k_per_source": 16,
+    "rrf_k": 60,
+    "aggregation": "sum",
+    "metric_k": 5,
+    "user_id": "local"
+  },
+  "environment": {
+    "chunks": 2989,
+    "documents": 187,
+    "dimension": 512,
+    "embedding_snapshot": "C:\\Users\\13683\\.cache\\huggingface\\hub\\models--BAAI--bge-small-zh-v1.5\\snapshots\\7999e1d3359715c523056ef9478215996d62a620",
+    "index_sha256": "95bc9827e694c818c18ae244908aeb2ca8697e2cb8b4b81f2db103341d06db7f",
+    "golden_sha256": "7e990070fd881d869e6d9a48e171d2991c68ba35a2e5eef611bc68d9b159f812"
+  },
+  "rewrite_metadata": {
+    "model": "deepseek-v4-pro",
+    "prompt_version": "query-rewrite-v2",
+    "prompt_sha256": "a53fc79af78ccf141fab20eca3f555657742123fbb9c537737b6eee3834039a0",
+    "temperature": 0.0,
+    "max_tokens": 1024,
+    "timeout_budget_s": 15.0
+  },
+  "metrics": {
+    "A": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      }
+    },
+    "D1": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      }
+    },
+    "D2_timeout": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      }
+    },
+    "D2_exception": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      }
+    },
+    "D2_empty": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8625,
+        "ndcg": 0.8846268032608154,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.8583333333333334,
+        "mrr": 0.925,
+        "ndcg": 0.8627861572546065,
+        "micro_recall": 0.7777777777777778
+      }
+    },
+    "B": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8391666666666667,
+        "ndcg": 0.8658764682653967,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 1.0,
+        "recall": 0.8916666666666666,
+        "mrr": 0.9266666666666667,
+        "ndcg": 0.8580165522597886,
+        "micro_recall": 0.8148148148148148
+      },
+      "single@8": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "mrr": 0.8474999999999999,
+        "ndcg": 0.8836868276207979,
+        "micro_recall": 1.0
+      },
+      "multi@8": {
+        "hit": 1.0,
+        "recall": 0.9333333333333333,
+        "mrr": 0.9266666666666667,
+        "ndcg": 0.8760458951889623,
+        "micro_recall": 0.8888888888888888
+      }
+    }
+  },
+  "acceptance": {
+    "checks": {
+      "D1_zero_llm_calls": true,
+      "D1_equals_A": true,
+      "D2_fallback_status_query_results": true,
+      "Q18_success_top5": true,
+      "single_hit_at_least_095": true,
+      "preserve_baseline_hits": false,
+      "single_mrr_non_decreasing": false,
+      "single_ndcg_non_decreasing": false,
+      "multi_each_question_non_decreasing": false,
+      "multi_micro_recall_non_decreasing": true,
+      "fixed_rewrite_retrieval_stable": true
+    },
+    "ab_status": "completed",
+    "passed": false
+  },
+  "D1_llm_calls": 0,
+  "D2_checks": {
+    "timeout_Q1": true,
+    "timeout_Q2": true,
+    "timeout_Q3": true,
+    "timeout_Q4": true,
+    "timeout_Q5": true,
+    "timeout_Q6": true,
+    "timeout_Q7": true,
+    "timeout_Q8": true,
+    "timeout_Q9": true,
+    "timeout_Q10": true,
+    "timeout_Q11": true,
+    "timeout_Q12": true,
+    "timeout_Q13": true,
+    "timeout_Q14": true,
+    "timeout_Q15": true,
+    "timeout_Q16": true,
+    "timeout_Q17": true,
+    "timeout_Q18": true,
+    "timeout_Q19": true,
+    "timeout_Q20": true,
+    "timeout_calls": true,
+    "exception_Q1": true,
+    "exception_Q2": true,
+    "exception_Q3": true,
+    "exception_Q4": true,
+    "exception_Q5": true,
+    "exception_Q6": true,
+    "exception_Q7": true,
+    "exception_Q8": true,
+    "exception_Q9": true,
+    "exception_Q10": true,
+    "exception_Q11": true,
+    "exception_Q12": true,
+    "exception_Q13": true,
+    "exception_Q14": true,
+    "exception_Q15": true,
+    "exception_Q16": true,
+    "exception_Q17": true,
+    "exception_Q18": true,
+    "exception_Q19": true,
+    "exception_Q20": true,
+    "exception_calls": true,
+    "empty_Q1": true,
+    "empty_Q2": true,
+    "empty_Q3": true,
+    "empty_Q4": true,
+    "empty_Q5": true,
+    "empty_Q6": true,
+    "empty_Q7": true,
+    "empty_Q8": true,
+    "empty_Q9": true,
+    "empty_Q10": true,
+    "empty_Q11": true,
+    "empty_Q12": true,
+    "empty_Q13": true,
+    "empty_Q14": true,
+    "empty_Q15": true,
+    "empty_Q16": true,
+    "empty_Q17": true,
+    "empty_Q18": true,
+    "empty_Q19": true,
+    "empty_Q20": true,
+    "empty_calls": true
+  },
+  "live_rewrite_calls": 20,
+  "rewrite_statistics": {
+    "success_rate": 0.95,
+    "empty_rate": 0.0,
+    "fallback_rate": 0.05,
+    "mean_generation_latency_ms": 7199.801279999701,
+    "live_mean_latency_ms": 7199.801279999701,
+    "llm_tokens": {
+      "input": 1336,
+      "output": 4628
+    },
+    "tokens_note": "completed calls only; timed-out or retried usage may be unknown"
+  }
+}

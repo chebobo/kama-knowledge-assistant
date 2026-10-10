@@ -1,0 +1,312 @@
+{
+  "metadata": {
+    "model": "deepseek-v4-pro",
+    "prompt_version": "query-rewrite-v2",
+    "prompt_sha256": "a53fc79af78ccf141fab20eca3f555657742123fbb9c537737b6eee3834039a0",
+    "temperature": 0.0,
+    "max_tokens": 1024,
+    "timeout_budget_s": 15.0
+  },
+  "entries": {
+    "1": {
+      "original_query": "为什么单模型走不通？Agent 混合路由优化是什么",
+      "result": {
+        "rewritten_query": "单模型 局限性 原因 Agent 混合路由优化 定义 路由策略 架构设计 适用场景 优劣对比",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 73,
+        "output_tokens": 539,
+        "stop_reason": "end_turn",
+        "thinking_chars": 921,
+        "text_chars": 46
+      },
+      "rewrite_latency_ms": 13440.772199999628,
+      "generated_at": "2026-10-10T07:25:08.752902+00:00"
+    },
+    "2": {
+      "original_query": "ReAct 循环是如何工作的，LLM、上下文和工具如何协同",
+      "result": {
+        "rewritten_query": "ReAct 循环 工作机制 LLM 上下文管理 工具调用 协同",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 76,
+        "output_tokens": 125,
+        "stop_reason": "end_turn",
+        "thinking_chars": 191,
+        "text_chars": 31
+      },
+      "rewrite_latency_ms": 4200.023899997177,
+      "generated_at": "2026-10-10T07:25:13.387681+00:00"
+    },
+    "3": {
+      "original_query": "RAG 检索增强生成的核心思路是什么",
+      "result": {
+        "rewritten_query": "RAG 检索增强生成 核心思路 架构设计 检索机制 生成流程",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 70,
+        "output_tokens": 124,
+        "stop_reason": "end_turn",
+        "thinking_chars": 174,
+        "text_chars": 30
+      },
+      "rewrite_latency_ms": 4312.850599999365,
+      "generated_at": "2026-10-10T07:25:18.098369+00:00"
+    },
+    "4": {
+      "original_query": "Agent 的记忆系统分为哪几类",
+      "result": {
+        "rewritten_query": "Agent 记忆系统 分类 记忆机制 类别",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 69,
+        "output_tokens": 127,
+        "stop_reason": "end_turn",
+        "thinking_chars": 201,
+        "text_chars": 21
+      },
+      "rewrite_latency_ms": 4319.075900002645,
+      "generated_at": "2026-10-10T07:25:22.892087+00:00"
+    },
+    "5": {
+      "original_query": "Transformer 的多头自注意力机制是如何计算的",
+      "result": {
+        "rewritten_query": "Transformer 多头自注意力机制 计算流程 计算公式 计算步骤",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 70,
+        "output_tokens": 378,
+        "stop_reason": "end_turn",
+        "thinking_chars": 708,
+        "text_chars": 35
+      },
+      "rewrite_latency_ms": 10119.264799999655,
+      "generated_at": "2026-10-10T07:25:33.389254+00:00"
+    },
+    "6": {
+      "original_query": "什么是模型蒸馏？它到底在蒸馏什么",
+      "result": {
+        "rewritten_query": "模型蒸馏 概念 蒸馏对象 知识迁移机制",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 70,
+        "output_tokens": 148,
+        "stop_reason": "end_turn",
+        "thinking_chars": 227,
+        "text_chars": 19
+      },
+      "rewrite_latency_ms": 4771.915299999819,
+      "generated_at": "2026-10-10T07:25:38.629887+00:00"
+    },
+    "7": {
+      "original_query": "Claude Code 是怎么管理上下文窗口的（Auto-Compact）",
+      "result": {
+        "rewritten_query": "Claude Code 上下文窗口管理 Auto-Compact 机制",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 74,
+        "output_tokens": 126,
+        "stop_reason": "end_turn",
+        "thinking_chars": 242,
+        "text_chars": 35
+      },
+      "rewrite_latency_ms": 4103.947300001892,
+      "generated_at": "2026-10-10T07:25:43.205413+00:00"
+    },
+    "8": {
+      "original_query": "Function Calling 的原理是什么，大模型如何调用工具",
+      "result": {
+        "rewritten_query": "Function Calling 原理 大模型 工具调用 机制",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 72,
+        "output_tokens": 223,
+        "stop_reason": "end_turn",
+        "thinking_chars": 450,
+        "text_chars": 31
+      },
+      "rewrite_latency_ms": 6372.90529999882,
+      "generated_at": "2026-10-10T07:25:49.996458+00:00"
+    },
+    "9": {
+      "original_query": "多 Agent 之间如何通信协作",
+      "result": {
+        "rewritten_query": "多 Agent 通信协作 消息传递 任务协调 上下文管理 架构设计",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 68,
+        "output_tokens": 189,
+        "stop_reason": "end_turn",
+        "thinking_chars": 312,
+        "text_chars": 33
+      },
+      "rewrite_latency_ms": 5427.931199999875,
+      "generated_at": "2026-10-10T07:25:55.760378+00:00"
+    },
+    "10": {
+      "original_query": "Agent 的工具应该怎么设计",
+      "result": {
+        "rewritten_query": "Agent 工具设计 架构设计 工具调用 参数定义 接口规范 错误处理 安全机制",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 67,
+        "output_tokens": 380,
+        "stop_reason": "end_turn",
+        "thinking_chars": 640,
+        "text_chars": 40
+      },
+      "rewrite_latency_ms": 10489.17259999871,
+      "generated_at": "2026-10-10T07:26:06.718221+00:00"
+    },
+    "11": {
+      "original_query": "MCP 协议是什么，解决什么问题",
+      "result": {
+        "rewritten_query": "MCP协议 定义 解决什么问题 设计目标 应用场景",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 69,
+        "output_tokens": 140,
+        "stop_reason": "end_turn",
+        "thinking_chars": 216,
+        "text_chars": 25
+      },
+      "rewrite_latency_ms": 4034.539100000984,
+      "generated_at": "2026-10-10T07:26:11.098400+00:00"
+    },
+    "12": {
+      "original_query": "向量数据库的核心概念和选型考虑",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "timeout",
+        "input_tokens": null,
+        "output_tokens": null,
+        "stop_reason": null,
+        "thinking_chars": null,
+        "text_chars": null
+      },
+      "rewrite_latency_ms": 15014.405300000362,
+      "generated_at": "2026-10-10T07:26:26.607170+00:00"
+    },
+    "13": {
+      "original_query": "RAG 系统应该如何评估",
+      "result": {
+        "rewritten_query": "RAG 系统 评估方法 评估指标 检索质量 生成质量 忠实度 相关性",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 67,
+        "output_tokens": 245,
+        "stop_reason": "end_turn",
+        "thinking_chars": 377,
+        "text_chars": 34
+      },
+      "rewrite_latency_ms": 6834.902099999454,
+      "generated_at": "2026-10-10T07:26:33.793838+00:00"
+    },
+    "14": {
+      "original_query": "什么是上下文工程（Context Engineering）",
+      "result": {
+        "rewritten_query": "上下文工程 Context Engineering 概念 定义 核心思想",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 67,
+        "output_tokens": 213,
+        "stop_reason": "end_turn",
+        "thinking_chars": 391,
+        "text_chars": 36
+      },
+      "rewrite_latency_ms": 6890.970199998264,
+      "generated_at": "2026-10-10T07:26:41.125154+00:00"
+    },
+    "15": {
+      "original_query": "Agent 的性能应该如何评估",
+      "result": {
+        "rewritten_query": "Agent 性能评估 评估指标 评估方法 任务成功率 响应质量 工具调用效率",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 66,
+        "output_tokens": 362,
+        "stop_reason": "end_turn",
+        "thinking_chars": 623,
+        "text_chars": 38
+      },
+      "rewrite_latency_ms": 9691.991699997743,
+      "generated_at": "2026-10-10T07:26:51.203107+00:00"
+    },
+    "16": {
+      "original_query": "大模型幻觉产生的原因和治理手段",
+      "result": {
+        "rewritten_query": "大模型幻觉 成因 治理手段 缓解策略",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 69,
+        "output_tokens": 531,
+        "stop_reason": "end_turn",
+        "thinking_chars": 891,
+        "text_chars": 18
+      },
+      "rewrite_latency_ms": 12972.978999998304,
+      "generated_at": "2026-10-10T07:27:04.676677+00:00"
+    },
+    "17": {
+      "original_query": "微调（Fine-tuning）和 RAG 有什么区别，怎么选",
+      "result": {
+        "rewritten_query": "微调 Fine-tuning RAG 区别 优劣对比 适用场景 选择依据",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 75,
+        "output_tokens": 139,
+        "stop_reason": "end_turn",
+        "thinking_chars": 221,
+        "text_chars": 36
+      },
+      "rewrite_latency_ms": 4029.193900001701,
+      "generated_at": "2026-10-10T07:27:09.198407+00:00"
+    },
+    "18": {
+      "original_query": "主流 Agent 框架有什么异同",
+      "result": {
+        "rewritten_query": "Agent框架 架构设计 工具调用 记忆机制 上下文管理 安全机制 适用场景 异同对比",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 68,
+        "output_tokens": 204,
+        "stop_reason": "end_turn",
+        "thinking_chars": 319,
+        "text_chars": 43
+      },
+      "rewrite_latency_ms": 4974.811000000045,
+      "generated_at": "2026-10-10T07:27:14.536858+00:00"
+    },
+    "19": {
+      "original_query": "工作流（Workflow）和自主 Agent 有什么区别",
+      "result": {
+        "rewritten_query": "工作流 Workflow 自主 Agent 区别 架构设计 工具调用 上下文管理 适用场景 优劣对比",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 72,
+        "output_tokens": 184,
+        "stop_reason": "end_turn",
+        "thinking_chars": 301,
+        "text_chars": 50
+      },
+      "rewrite_latency_ms": 5207.849599999463,
+      "generated_at": "2026-10-10T07:27:20.266076+00:00"
+    },
+    "20": {
+      "original_query": "GraphRAG 是什么，和普通 RAG 有什么不同",
+      "result": {
+        "rewritten_query": "GraphRAG 概念 架构设计 记忆机制 上下文管理 与普通 RAG 区别 优劣对比 适用场景",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 74,
+        "output_tokens": 251,
+        "stop_reason": "end_turn",
+        "thinking_chars": 391,
+        "text_chars": 48
+      },
+      "rewrite_latency_ms": 6786.524600000121,
+      "generated_at": "2026-10-10T07:27:27.504663+00:00"
+    }
+  }
+}

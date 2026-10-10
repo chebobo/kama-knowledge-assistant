@@ -40,3 +40,18 @@ knowledge_docs/*.pdf
 knowledge_docs/RAG_V2_HYBRID_EXECUTION_PLAN.md
 knowledge_docs/RAG_V2_HYBRID_PLAN.md
 knowledge_docs/hybrid_fts5_chinese_tokenizer.png
+knowledge_docs/rewrite_results/index_snapshot/
+
+# RAG 评测索引快照与旧索引备份（大体积，不入库）
+knowledge_docs/**/index_snapshot/
+knowledge_docs/index_snapshot_chars_v1600/
+
+# pytest 临时目录残留
+.pytest_tmp_rewrite_verified/
+
+# 个人求职与学习材料（不入库）
+/简历/
+/examples/
+/模拟面试记录与自测清单.md
+/Hybrid检索链路代码精读_面试准备.md
+/LangChain_LangGraph_框架对比学习笔记.md

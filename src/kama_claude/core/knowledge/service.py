@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -18,8 +19,11 @@ from kama_claude.core.knowledge.models import (
 from kama_claude.core.knowledge.parser.file import FileParser
 from kama_claude.core.knowledge.retriever.base import Retriever
 from kama_claude.core.knowledge.retriever.dense import DenseRetriever
+from kama_claude.core.knowledge.rewrite import QueryRewriter
 from kama_claude.core.knowledge.store.base import VectorStore
 from kama_claude.core.knowledge.token_budget import CharacterTokenCounter, TokenCounter
+
+log = logging.getLogger(__name__)
 
 
 class DocumentCatalog(Protocol):
@@ -59,9 +63,14 @@ class KnowledgeService:
         max_retrieved_tokens: int = 4000,
         parser: FileParser | None = None,
         chunker: BasicChunker | None = None,
+        rewrite_enabled: bool = False,
+        rewriter: QueryRewriter | None = None,
+        rewrite_timeout_budget_s: float = 15.0,
     ) -> None:
         if max_retrieved_tokens <= 0:
             raise ValueError("max_retrieved_tokens must be positive")
+        if rewrite_timeout_budget_s <= 0:
+            raise ValueError("rewrite_timeout_budget_s must be positive")
         self._embedding = embedding
         self._store = store
         self._retriever = (
@@ -74,6 +83,10 @@ class KnowledgeService:
         self._parser = parser or FileParser()
         self._chunker = chunker or BasicChunker()
         self._index_lock = asyncio.Lock()
+        # Query Rewrite：默认关闭，懒加载，不调用 LLM；成功用改写 query，失败回退原问题
+        self._rewrite_enabled = rewrite_enabled
+        self._rewriter = rewriter
+        self._rewrite_timeout_budget_s = rewrite_timeout_budget_s
 
     # 对文档分片、计算 embedding 并写入向量存储
     async def index(
@@ -192,11 +205,25 @@ class KnowledgeService:
             return []
         if top_k <= 0:
             raise ValueError("top_k must be positive")
+        effective_query = await self._maybe_rewrite(query)
         return await self._retriever.retrieve(
-            query,
+            effective_query,
             top_k=top_k,
             filters=KnowledgeFilter(user_id=user_id, project_id=project_id),
         )
+
+    # 可选查询改写编排：默认关闭零开销；仅 success 且非空才用改写结果，其余一律回退原问题
+    async def _maybe_rewrite(self, query: str) -> str:
+        if not self._rewrite_enabled:
+            return query
+        if self._rewriter is None:
+            self._rewriter = QueryRewriter(timeout_budget_s=self._rewrite_timeout_budget_s)
+        result = await self._rewriter.rewrite(query)
+        if result.status == "success" and result.rewritten_query:
+            log.info("query rewrite applied: %r -> %r", query, result.rewritten_query)
+            return result.rewritten_query
+        log.info("query rewrite fallback: status=%s reason=%s", result.status, result.fallback_reason)
+        return query
 
     # 检索并按 token 预算格式化知识上下文
     async def retrieve_context(

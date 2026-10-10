@@ -54,6 +54,36 @@ class AnthropicProvider:
             self._client = client
         self._model = model
 
+    async def complete_text(
+        self, prompt: str, *, max_tokens: int = 256, temperature: float = 0.0
+    ) -> LlmResponse:
+        """简短非流式生成，共用客户端配置；总预算由调用方约束。"""
+        message = await self._client.messages.create(
+            model=self._model,
+            max_tokens=max_tokens,
+            extra_body={"temperature": temperature},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        thinking_blocks: list[dict[str, object]] = []
+        for block in message.content:
+            if block.type == "thinking":
+                thinking_blocks.append({
+                    "type": "thinking", "thinking": block.thinking, "signature": block.signature
+                })
+        return LlmResponse(
+            stop_reason=message.stop_reason or "end_turn",
+            text="".join(block.text for block in message.content if block.type == "text"),
+            thinking_blocks=thinking_blocks,
+            usage=UsageStats(
+                input_tokens=message.usage.input_tokens,
+                output_tokens=message.usage.output_tokens,
+            ),
+        )
+
+    async def aclose(self) -> None:
+        """释放由调用方管理生命周期的 SDK 连接。"""
+        await self._client.close()
+
     # 流式调用 Anthropic API，逐 token 发布事件并返回 LlmResponse；网络中断时自动重试
     async def chat(
         self,
@@ -148,7 +178,9 @@ class AnthropicProvider:
                 )
             elif block.type == "thinking":
                 # thinking blocks must be passed back verbatim in subsequent requests
-                thinking_blocks.append({"type": "thinking", "thinking": block.thinking, "signature": block.signature})
+                thinking_blocks.append({
+                    "type": "thinking", "thinking": block.thinking, "signature": block.signature
+                })
 
         return LlmResponse(
             stop_reason=final_message.stop_reason or "end_turn",

@@ -37,6 +37,7 @@ from kama_claude.core.bus.envelope import EventPushEnvelope
 from kama_claude.core.config import KamaConfig, get_config
 from kama_claude.core.events.bus import EventBus
 from kama_claude.core.knowledge.catalog import SqliteDocumentCatalog
+from kama_claude.core.knowledge.chunker.basic import BasicChunker
 from kama_claude.core.knowledge.embedding.local import LocalEmbeddingProvider
 from kama_claude.core.knowledge.retriever.bm25 import BM25Retriever
 from kama_claude.core.knowledge.retriever.dense import DenseRetriever
@@ -135,8 +136,11 @@ class CoreApp:
                 retriever=retriever,
                 lexical_store=lexical_store,
                 catalog=catalog,
+                chunker=BasicChunker(tokenizer=embedding.tokenizer),
                 token_counter=token_counter,
                 max_retrieved_tokens=config.knowledge.max_retrieved_tokens,
+                rewrite_enabled=config.knowledge.rewrite_enabled,
+                rewrite_timeout_budget_s=config.knowledge.rewrite_timeout_budget_s,
             )
         except Exception:
             logger.exception("knowledge initialization failed; disabling knowledge service")

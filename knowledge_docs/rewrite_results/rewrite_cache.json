@@ -1,0 +1,252 @@
+{
+  "metadata": {
+    "model": "deepseek-v4-pro",
+    "prompt_version": "query-rewrite-v1",
+    "prompt_sha256": "e45060bb08210bbd4123575bf5d8af783b3d4a80143f444c84b941209209d99e",
+    "temperature": 0.0,
+    "max_tokens": 256,
+    "timeout_budget_s": 15.0
+  },
+  "entries": {
+    "1": {
+      "original_query": "为什么单模型走不通？Agent 混合路由优化是什么",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1418.0218000001332,
+      "generated_at": "2026-10-10T05:47:54.805199+00:00"
+    },
+    "2": {
+      "original_query": "ReAct 循环是如何工作的，LLM、上下文和工具如何协同",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1399.550599999202,
+      "generated_at": "2026-10-10T05:47:56.575639+00:00"
+    },
+    "3": {
+      "original_query": "RAG 检索增强生成的核心思路是什么",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1304.1800999999396,
+      "generated_at": "2026-10-10T05:47:58.428682+00:00"
+    },
+    "4": {
+      "original_query": "Agent 的记忆系统分为哪几类",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1223.5693999991781,
+      "generated_at": "2026-10-10T05:48:00.226498+00:00"
+    },
+    "5": {
+      "original_query": "Transformer 的多头自注意力机制是如何计算的",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1295.9611999995104,
+      "generated_at": "2026-10-10T05:48:01.932097+00:00"
+    },
+    "6": {
+      "original_query": "什么是模型蒸馏？它到底在蒸馏什么",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1235.3984999990644,
+      "generated_at": "2026-10-10T05:48:03.654459+00:00"
+    },
+    "7": {
+      "original_query": "Claude Code 是怎么管理上下文窗口的（Auto-Compact）",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1272.234899999603,
+      "generated_at": "2026-10-10T05:48:05.288698+00:00"
+    },
+    "8": {
+      "original_query": "Function Calling 的原理是什么，大模型如何调用工具",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1416.5283000002091,
+      "generated_at": "2026-10-10T05:48:07.072986+00:00"
+    },
+    "9": {
+      "original_query": "多 Agent 之间如何通信协作",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1394.6359000001394,
+      "generated_at": "2026-10-10T05:48:09.288033+00:00"
+    },
+    "10": {
+      "original_query": "Agent 的工具应该怎么设计",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1385.1322999998956,
+      "generated_at": "2026-10-10T05:48:11.255659+00:00"
+    },
+    "11": {
+      "original_query": "MCP 协议是什么，解决什么问题",
+      "result": {
+        "rewritten_query": null,
+        "status": "fallback",
+        "fallback_reason": "error:APIConnectionError",
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "rewrite_latency_ms": 1322.7607000007993,
+      "generated_at": "2026-10-10T05:48:12.990141+00:00"
+    },
+    "12": {
+      "original_query": "向量数据库的核心概念和选型考虑",
+      "result": {
+        "rewritten_query": null,
+        "status": "empty",
+        "fallback_reason": "empty_output",
+        "input_tokens": 296,
+        "output_tokens": 256
+      },
+      "rewrite_latency_ms": 5904.712700001255,
+      "generated_at": "2026-10-10T05:48:19.326676+00:00"
+    },
+    "13": {
+      "original_query": "RAG 系统应该如何评估",
+      "result": {
+        "rewritten_query": "RAG 检索增强生成 系统 评估方法 评估指标 检索质量 生成质量 忠实度 答案相关性",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 38,
+        "output_tokens": 242
+      },
+      "rewrite_latency_ms": 4602.269199998773,
+      "generated_at": "2026-10-10T05:48:24.282387+00:00"
+    },
+    "14": {
+      "original_query": "什么是上下文工程（Context Engineering）",
+      "result": {
+        "rewritten_query": null,
+        "status": "empty",
+        "fallback_reason": "empty_output",
+        "input_tokens": 38,
+        "output_tokens": 256
+      },
+      "rewrite_latency_ms": 4833.893900000476,
+      "generated_at": "2026-10-10T05:48:29.426396+00:00"
+    },
+    "15": {
+      "original_query": "Agent 的性能应该如何评估",
+      "result": {
+        "rewritten_query": null,
+        "status": "empty",
+        "fallback_reason": "empty_output",
+        "input_tokens": 37,
+        "output_tokens": 256
+      },
+      "rewrite_latency_ms": 4809.81249999968,
+      "generated_at": "2026-10-10T05:48:34.536485+00:00"
+    },
+    "16": {
+      "original_query": "大模型幻觉产生的原因和治理手段",
+      "result": {
+        "rewritten_query": "大模型幻觉 产生原因 治理手段 大语言模型 LLM hallucination 成因 缓解策略 事实一致性 RAG 检索增强生成 RLHF 强化学习人类反馈 解码策略",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 40,
+        "output_tokens": 188
+      },
+      "rewrite_latency_ms": 3876.5156999998,
+      "generated_at": "2026-10-10T05:48:38.753252+00:00"
+    },
+    "17": {
+      "original_query": "微调（Fine-tuning）和 RAG 有什么区别，怎么选",
+      "result": {
+        "rewritten_query": "微调 Fine-tuning 与 RAG（Retrieval-Augmented Generation）的区别对比、技术选型、适用场景与优缺点",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 46,
+        "output_tokens": 203
+      },
+      "rewrite_latency_ms": 3958.863300000303,
+      "generated_at": "2026-10-10T05:48:43.036725+00:00"
+    },
+    "18": {
+      "original_query": "主流 Agent 框架有什么异同",
+      "result": {
+        "rewritten_query": null,
+        "status": "empty",
+        "fallback_reason": "empty_output",
+        "input_tokens": 39,
+        "output_tokens": 256
+      },
+      "rewrite_latency_ms": 4653.065900000001,
+      "generated_at": "2026-10-10T05:48:48.082652+00:00"
+    },
+    "19": {
+      "original_query": "工作流（Workflow）和自主 Agent 有什么区别",
+      "result": {
+        "rewritten_query": "工作流（Workflow）与自主 Agent（Autonomous Agent/智能体）的区别、对比、架构差异及设计特点",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 43,
+        "output_tokens": 244
+      },
+      "rewrite_latency_ms": 5165.58939999959,
+      "generated_at": "2026-10-10T05:48:53.576298+00:00"
+    },
+    "20": {
+      "original_query": "GraphRAG 是什么，和普通 RAG 有什么不同",
+      "result": {
+        "rewritten_query": "GraphRAG（Graph Retrieval-Augmented Generation）是什么，与普通 RAG（Retrieval-Augmented Generation）有什么不同，对比架构差异、技术特点与适用场景",
+        "status": "success",
+        "fallback_reason": null,
+        "input_tokens": 45,
+        "output_tokens": 211
+      },
+      "rewrite_latency_ms": 3949.586400000044,
+      "generated_at": "2026-10-10T05:48:57.964632+00:00"
+    }
+  }
+}

@@ -1,0 +1,345 @@
+{
+  "run_at": "2026-10-10T11:10:37.015574+00:00",
+  "scope": "phase1_evaluation_orchestration_only",
+  "configuration": {
+    "rewrite_enabled": true,
+    "c_enabled": true,
+    "top_k": 8,
+    "candidate_k_per_source": 16,
+    "rrf_k": 60,
+    "aggregation": "sum",
+    "metric_k": 5,
+    "user_id": "local"
+  },
+  "environment": {
+    "chunks": 5265,
+    "documents": 188,
+    "dimension": 512,
+    "embedding_snapshot": "C:\\Users\\13683\\.cache\\huggingface\\hub\\models--BAAI--bge-small-zh-v1.5\\snapshots\\7999e1d3359715c523056ef9478215996d62a620",
+    "index_sha256": "9c18ee6a134fb6ec63d5b6f4ca564a3098451ccaf03eb0fead5e0b3692dc67b2",
+    "golden_sha256": "7e990070fd881d869e6d9a48e171d2991c68ba35a2e5eef611bc68d9b159f812"
+  },
+  "rewrite_metadata": {
+    "model": "deepseek-v4-pro",
+    "prompt_version": "query-rewrite-v2.2",
+    "prompt_sha256": "0a5d832d4712774945386d215dd8ba5d7f440768fad88c37974890b38ab0943c",
+    "temperature": 0.0,
+    "max_tokens": 1024,
+    "timeout_budget_s": 15.0
+  },
+  "metrics": {
+    "A": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      }
+    },
+    "D1": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      }
+    },
+    "D2_timeout": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      }
+    },
+    "D2_exception": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      }
+    },
+    "D2_empty": {
+      "single@5": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@5": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      },
+      "single@8": {
+        "hit": 0.95,
+        "recall": 0.95,
+        "mrr": 0.8875,
+        "ndcg": 0.9030803155822426,
+        "micro_recall": 0.95
+      },
+      "multi@8": {
+        "hit": 0.95,
+        "recall": 0.9083333333333334,
+        "mrr": 0.95,
+        "ndcg": 0.8991641682982466,
+        "micro_recall": 0.8518518518518519
+      }
+    },
+    "B": {
+      "single@5": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9375,
+        "ndcg": 0.9530803155822426,
+        "micro_recall": 1.0
+      },
+      "multi@5": {
+        "hit": 1.0,
+        "recall": 0.8833333333333334,
+        "mrr": 1.0,
+        "ndcg": 0.9047582361694252,
+        "micro_recall": 0.8148148148148148
+      },
+      "single@8": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9375,
+        "ndcg": 0.9530803155822426,
+        "micro_recall": 1.0
+      },
+      "multi@8": {
+        "hit": 1.0,
+        "recall": 0.9333333333333333,
+        "mrr": 1.0,
+        "ndcg": 0.9253499281911969,
+        "micro_recall": 0.8888888888888888
+      }
+    },
+    "C": {
+      "single@5": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9375,
+        "ndcg": 0.9530803155822426,
+        "micro_recall": 1.0
+      },
+      "multi@5": {
+        "hit": 1.0,
+        "recall": 0.9333333333333333,
+        "mrr": 1.0,
+        "ndcg": 0.9284780074463548,
+        "micro_recall": 0.8888888888888888
+      },
+      "single@8": {
+        "hit": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9375,
+        "ndcg": 0.9530803155822426,
+        "micro_recall": 1.0
+      },
+      "multi@8": {
+        "hit": 1.0,
+        "recall": 0.9333333333333333,
+        "mrr": 1.0,
+        "ndcg": 0.9284780074463548,
+        "micro_recall": 0.8888888888888888
+      }
+    }
+  },
+  "acceptance": {
+    "checks": {
+      "D1_zero_llm_calls": true,
+      "D1_equals_A": true,
+      "D2_fallback_status_query_results": true,
+      "Q18_success_top5": true,
+      "single_hit_at_least_095": true,
+      "preserve_baseline_hits": true,
+      "single_mrr_non_decreasing": true,
+      "single_ndcg_non_decreasing": true,
+      "multi_each_question_non_decreasing": false,
+      "multi_micro_recall_non_decreasing": false,
+      "fixed_rewrite_retrieval_stable": true
+    },
+    "ab_status": "completed",
+    "passed": false
+  },
+  "c_acceptance": {
+    "single_hit_at_least_095": true,
+    "preserve_baseline_hits": true,
+    "multi_each_question_non_decreasing": true,
+    "multi_micro_recall_non_decreasing": true,
+    "Q18_success_top5": true
+  },
+  "D1_llm_calls": 0,
+  "D2_checks": {
+    "timeout_Q1": true,
+    "timeout_Q2": true,
+    "timeout_Q3": true,
+    "timeout_Q4": true,
+    "timeout_Q5": true,
+    "timeout_Q6": true,
+    "timeout_Q7": true,
+    "timeout_Q8": true,
+    "timeout_Q9": true,
+    "timeout_Q10": true,
+    "timeout_Q11": true,
+    "timeout_Q12": true,
+    "timeout_Q13": true,
+    "timeout_Q14": true,
+    "timeout_Q15": true,
+    "timeout_Q16": true,
+    "timeout_Q17": true,
+    "timeout_Q18": true,
+    "timeout_Q19": true,
+    "timeout_Q20": true,
+    "timeout_calls": true,
+    "exception_Q1": true,
+    "exception_Q2": true,
+    "exception_Q3": true,
+    "exception_Q4": true,
+    "exception_Q5": true,
+    "exception_Q6": true,
+    "exception_Q7": true,
+    "exception_Q8": true,
+    "exception_Q9": true,
+    "exception_Q10": true,
+    "exception_Q11": true,
+    "exception_Q12": true,
+    "exception_Q13": true,
+    "exception_Q14": true,
+    "exception_Q15": true,
+    "exception_Q16": true,
+    "exception_Q17": true,
+    "exception_Q18": true,
+    "exception_Q19": true,
+    "exception_Q20": true,
+    "exception_calls": true,
+    "empty_Q1": true,
+    "empty_Q2": true,
+    "empty_Q3": true,
+    "empty_Q4": true,
+    "empty_Q5": true,
+    "empty_Q6": true,
+    "empty_Q7": true,
+    "empty_Q8": true,
+    "empty_Q9": true,
+    "empty_Q10": true,
+    "empty_Q11": true,
+    "empty_Q12": true,
+    "empty_Q13": true,
+    "empty_Q14": true,
+    "empty_Q15": true,
+    "empty_Q16": true,
+    "empty_Q17": true,
+    "empty_Q18": true,
+    "empty_Q19": true,
+    "empty_Q20": true,
+    "empty_calls": true
+  },
+  "live_rewrite_calls": 0,
+  "rewrite_statistics": {
+    "success_rate": 0.95,
+    "empty_rate": 0.05,
+    "fallback_rate": 0.0,
+    "mean_generation_latency_ms": 5703.362400000333,
+    "live_mean_latency_ms": null,
+    "llm_tokens": {
+      "input": 2025,
+      "output": 6674
+    },
+    "tokens_note": "completed calls only; timed-out or retried usage may be unknown"
+  }
+}

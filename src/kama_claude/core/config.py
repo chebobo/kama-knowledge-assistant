@@ -96,6 +96,8 @@ class KnowledgeConfig:
     candidate_multiplier: int = 2
     rrf_k: int = 60
     document_aggregation: Literal["sum"] | None = None
+    rewrite_enabled: bool = False
+    rewrite_timeout_budget_s: float = 15.0
     user_id: str = "local"
     project_id: str = ""
     embedding: KnowledgeEmbeddingConfig = field(default_factory=KnowledgeEmbeddingConfig)
@@ -332,11 +334,12 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
         unknown_knowledge = set(knowledge) - {
             "enabled", "auto_retrieve", "hybrid_enabled", "top_k", "max_retrieved_tokens",
             "lexical_path", "candidate_multiplier", "rrf_k", "user_id", "project_id",
-            "document_aggregation", "embedding", "store",
+            "document_aggregation", "rewrite_enabled", "rewrite_timeout_budget_s",
+            "embedding", "store",
         }
         if unknown_knowledge:
             raise SystemExit(f"Unknown [knowledge] keys: {', '.join(sorted(unknown_knowledge))}")
-        for key in ("enabled", "auto_retrieve", "hybrid_enabled"):
+        for key in ("enabled", "auto_retrieve", "hybrid_enabled", "rewrite_enabled"):
             if key in knowledge:
                 val = knowledge[key]
                 if not isinstance(val, bool):
@@ -353,6 +356,13 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
             if not isinstance(val, int) or val < 0:
                 raise SystemExit("Config error: knowledge.rrf_k must be a non-negative integer")
             config.knowledge.rrf_k = val
+        if "rewrite_timeout_budget_s" in knowledge:
+            val = knowledge["rewrite_timeout_budget_s"]
+            if isinstance(val, bool) or not isinstance(val, (int, float)) or val <= 0:
+                raise SystemExit(
+                    "Config error: knowledge.rewrite_timeout_budget_s must be a positive number"
+                )
+            config.knowledge.rewrite_timeout_budget_s = float(val)
         if "document_aggregation" in knowledge:
             val = knowledge["document_aggregation"]
             if val == "":
@@ -533,6 +543,22 @@ def _apply_env(config: KamaConfig) -> None:
             raise SystemExit(
                 "Config error: KAMA_KNOWLEDGE_DOCUMENT_AGGREGATION must be empty, none, or sum"
             )
+    knowledge_rewrite = os.environ.get("KAMA_KNOWLEDGE_REWRITE_ENABLED")
+    if knowledge_rewrite is not None:
+        config.knowledge.rewrite_enabled = knowledge_rewrite.lower() not in ("0", "false", "no")
+    rewrite_timeout = os.environ.get("KAMA_KNOWLEDGE_REWRITE_TIMEOUT_BUDGET_S")
+    if rewrite_timeout is not None:
+        try:
+            timeout_value = float(rewrite_timeout)
+        except ValueError as exc:
+            raise SystemExit(
+                "Config error: KAMA_KNOWLEDGE_REWRITE_TIMEOUT_BUDGET_S must be a number"
+            ) from exc
+        if timeout_value <= 0:
+            raise SystemExit(
+                "Config error: KAMA_KNOWLEDGE_REWRITE_TIMEOUT_BUDGET_S must be positive"
+            )
+        config.knowledge.rewrite_timeout_budget_s = timeout_value
     for env_name, config_name in (
         ("KAMA_KNOWLEDGE_CANDIDATE_MULTIPLIER", "candidate_multiplier"),
         ("KAMA_KNOWLEDGE_RRF_K", "rrf_k"),
