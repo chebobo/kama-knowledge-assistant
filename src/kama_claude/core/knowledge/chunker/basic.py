@@ -143,7 +143,10 @@ class BasicChunker:
     # token 模式：按真实 tokenizer 窗口切分，保证每个 chunk ≤ max_tokens；
     # 非末段在段落边界回退，避免把句子硬切在中间
     def _split_tokens(self, text: str) -> list[str]:
-        tokens = self._tokenizer.encode(text, add_special_tokens=False)
+        # token 模式仅在 tokenizer 非 None 时进入（见 _split），断言收窄类型供静态检查
+        tokenizer = self._tokenizer
+        assert tokenizer is not None
+        tokens = tokenizer.encode(text, add_special_tokens=False)
         if len(tokens) <= self._max_tokens:
             return [text]
         parts: list[str] = []
@@ -151,14 +154,14 @@ class BasicChunker:
         n = len(tokens)
         while start < n:
             end = min(start + self._max_tokens, n)
-            segment = self._tokenizer.decode(tokens[start:end], skip_special_tokens=True)
+            segment = tokenizer.decode(tokens[start:end], skip_special_tokens=True)
             if end < n:
                 cut = self._find_boundary(segment, 0, len(segment))
                 if cut is not None:
                     segment = segment[:cut]
             if segment.strip():
                 parts.append(segment)
-            segment_tokens = len(self._tokenizer.encode(segment, add_special_tokens=False))
+            segment_tokens = len(tokenizer.encode(segment, add_special_tokens=False))
             advance = max(segment_tokens - self._overlap_tokens, 1)
             start += advance
             if start >= n:
@@ -167,7 +170,7 @@ class BasicChunker:
             # 改从末尾窗口重新取一段（≤ max_tokens，覆盖尾部），保证内容不丢
             if n - start < MIN_CHUNK_CHARS:
                 tail_start = max(n - self._max_tokens, 0)
-                tail = self._tokenizer.decode(tokens[tail_start:], skip_special_tokens=True)
+                tail = tokenizer.decode(tokens[tail_start:], skip_special_tokens=True)
                 if tail.strip() and tail != parts[-1]:
                     parts.append(tail)
                 break

@@ -69,24 +69,49 @@ class QueryRewriter:
                 )
                 text = response.text.strip().strip('"“”').strip()
                 usage = response.usage
-                tokens = {
-                    "input_tokens": usage.input_tokens if usage else None,
-                    "output_tokens": usage.output_tokens if usage else None,
-                }
-                diag = {
-                    "stop_reason": response.stop_reason,
-                    "thinking_chars": sum(
-                        len(b.get("thinking", "")) for b in (response.thinking_blocks or [])
-                    ),
-                    "text_chars": len(text),
-                }
+                input_tokens: int | None = usage.input_tokens if usage else None
+                output_tokens: int | None = usage.output_tokens if usage else None
+                stop_reason: str | None = response.stop_reason
+                thinking_chars: int = sum(
+                    len(str(b.get("thinking", "")))
+                    for b in (response.thinking_blocks or [])
+                )
+                text_chars: int = len(text)
                 if not text:
-                    return RewriteResult(None, "empty", "empty_output", **tokens, **diag)
+                    return RewriteResult(
+                        None, "empty", "empty_output",
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        stop_reason=stop_reason,
+                        thinking_chars=thinking_chars,
+                        text_chars=text_chars,
+                    )
                 if response.stop_reason != "end_turn":
-                    return RewriteResult(None, "fallback", "incomplete_output", **tokens, **diag)
+                    return RewriteResult(
+                        None, "fallback", "incomplete_output",
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        stop_reason=stop_reason,
+                        thinking_chars=thinking_chars,
+                        text_chars=text_chars,
+                    )
                 if "\n" in text or text.startswith(("改写后的查询：", "```")):
-                    return RewriteResult(None, "fallback", "invalid_output", **tokens, **diag)
-                return RewriteResult(text, "success", None, **tokens, **diag)
+                    return RewriteResult(
+                        None, "fallback", "invalid_output",
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        stop_reason=stop_reason,
+                        thinking_chars=thinking_chars,
+                        text_chars=text_chars,
+                    )
+                return RewriteResult(
+                    text, "success", None,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    stop_reason=stop_reason,
+                    thinking_chars=thinking_chars,
+                    text_chars=text_chars,
+                )
         except TimeoutError:
             return RewriteResult(None, "fallback", "timeout")
         except Exception as exc:

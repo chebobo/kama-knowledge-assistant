@@ -222,7 +222,11 @@ class KnowledgeService:
         if result.status == "success" and result.rewritten_query:
             log.info("query rewrite applied: %r -> %r", query, result.rewritten_query)
             return result.rewritten_query
-        log.info("query rewrite fallback: status=%s reason=%s", result.status, result.fallback_reason)
+        log.info(
+            "query rewrite fallback: status=%s reason=%s",
+            result.status,
+            result.fallback_reason,
+        )
         return query
 
     # 检索并按 token 预算格式化知识上下文
