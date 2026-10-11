@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kama_claude.core.knowledge.chunker.basic import BasicChunker, MIN_CHUNK_CHARS
+from kama_claude.core.knowledge.chunker.basic import MIN_CHUNK_CHARS, BasicChunker
 from kama_claude.core.knowledge.models import KnowledgeDocument
 from kama_claude.core.knowledge.parser.base import ParsedDocument
 
