@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -26,6 +28,37 @@ def _cjk_bigrams(s: str) -> frozenset[str]:
         else:
             previous = None
     return frozenset(bigrams)
+
+
+# 英文停用词：冠词/介词等没有区分能力的词，避免 a 匹配 append 产生噪声
+_STOP_WORDS: frozenset[str] = frozenset({
+    "a", "an", "the", "of", "to", "for", "in", "on", "at",
+    "and", "or", "is", "are", "be", "it", "this", "that",
+})
+
+# 匹配类型基础分（同一查询词在多个字段命中时取最佳）
+#   完整工具名 > 工具名词完整词 > 词前缀 > 工具名子串 > 描述完整词 > 描述子串 > 服务器名
+_SCORE_FULL_NAME = 5.0
+_SCORE_NAME_WORD = 3.0
+_SCORE_NAME_PREFIX = 2.5
+_SCORE_NAME_SUBSTR = 2.0
+_SCORE_DESC_WORD = 1.5
+_SCORE_DESC_SUBSTR = 1.0
+_SCORE_SERVER = 0.8
+
+# bigram 弱匹配：单个共享 bigram 的基础贡献与封顶（保持弱匹配等级低于主匹配）
+_BIGRAM_BASE = 0.15
+_BIGRAM_CAP = 0.5
+
+
+def _tool_name_parts(tool_name: str) -> tuple[str, ...]:
+    """write_file -> ("write", "file")，词边界拆分。"""
+    return tuple(p for p in re.split(r"[\W_]+", tool_name) if p)
+
+
+def _desc_words(description: str) -> frozenset[str]:
+    """描述中的英文/数字词表（按词边界提取，中文不在此表）。"""
+    return frozenset(re.findall(r"[a-z0-9]+", description.casefold()))
 
 
 @dataclass
@@ -68,6 +101,28 @@ class McpToolExposure:
         self._schema_sizes = {
             n: len(json.dumps(t.input_schema)) for n, t in self._tools.items()
         }
+        # 搜索评分缓存：工具名词词表、描述原文/英文词表、token 与 bigram 文档频率
+        self._name_parts: dict[str, tuple[str, ...]] = {}
+        self._desc_lower: dict[str, str] = {}
+        self._desc_words: dict[str, frozenset[str]] = {}
+        self._token_df: dict[str, int] = {}
+        self._bigram_df: dict[str, int] = {}
+        for tool in self._tools.values():
+            server, _, name = tool.name.partition("__")
+            self._name_parts[name] = _tool_name_parts(name)
+            self._desc_lower[tool.name] = tool.description.casefold()
+            self._desc_words[tool.name] = _desc_words(tool.description)
+            word_tokens = set(self._name_parts[name]) | {server.casefold()} | set(
+                self._desc_words[tool.name]
+            )
+            for token in word_tokens:
+                self._token_df[token] = self._token_df.get(token, 0) + 1
+        self._desc_bigrams: dict[str, frozenset[str]] = {
+            n: _cjk_bigrams(t.description) for n, t in self._tools.items()
+        }
+        for bigrams in self._desc_bigrams.values():
+            for b in bigrams:
+                self._bigram_df[b] = self._bigram_df.get(b, 0) + 1
         self._active: set[str] = (
             set(self._tools) if mode == "eager" else self.always_expose & set(self._tools)
         )
@@ -81,34 +136,77 @@ class McpToolExposure:
         self.search_blocked = False
         self.last_search_repeated = False
         self.last_query_repeated = False
-        self._desc_bigrams: dict[str, frozenset[str]] = {
-            n: _cjk_bigrams(t.description) for n, t in self._tools.items()
-        }
         if mode == "lazy" and self._budget_error(self._active) is not None:
             raise ValueError("MCP always_expose tools exceed the lazy exposure budget")
+
+    # ------------------------------------------------------------------
+    # 评分函数
+    # ------------------------------------------------------------------
+
+    # 平滑 IDF：词命中工具越多越不具区分力；权重恒为正，目录大小自适应
+    def _idf(self, token: str) -> float:
+        df = self._token_df.get(token, 0)
+        return 1.0 + 1.5 * math.log10((len(self._tools) + 1) / (df + 1))
+
+    # 单个查询词对单个工具的最佳字段命中分；服务器名只作为弱线索
+    def _token_score(self, token: str, tool: McpTool) -> float:
+        server, _, name = tool.name.partition("__")
+        parts = self._name_parts[name]
+        if token == tool.name.casefold():
+            return _SCORE_FULL_NAME
+        if token in parts:
+            return _SCORE_NAME_WORD
+        if any(p.startswith(token) for p in parts if len(p) > len(token)):
+            return _SCORE_NAME_PREFIX
+        if token in name.casefold():
+            return _SCORE_NAME_SUBSTR
+        if token in self._desc_words[tool.name]:
+            return _SCORE_DESC_WORD
+        if token in self._desc_lower[tool.name]:
+            return _SCORE_DESC_SUBSTR
+        if token == server.casefold() or server.casefold().startswith(token):
+            return _SCORE_SERVER
+        return 0.0
+
+    # 中文 bigram 弱匹配：共享更多、更少见的字符对得分更高，但封顶在弱匹配等级
+    def _bigram_score(self, tool: McpTool, query_bigrams: frozenset[str]) -> float:
+        shared = query_bigrams & self._desc_bigrams[tool.name]
+        if not shared:
+            return 0.0
+        n = len(self._tools)
+        total = 0.0
+        for b in shared:
+            df_b = self._bigram_df.get(b, 0)
+            rarity = 1.0 + math.log((n + 1) / (df_b + 1)) / math.log(n + 1)
+            total += _BIGRAM_BASE * rarity
+        return min(_BIGRAM_CAP, total)
+
+    # 多查询词共同评分：每个词取字段最佳分乘 IDF 后汇总，重复词不重复奖励
+    def _tool_score(self, tool: McpTool, tokens: set[str], query_bigrams: frozenset[str]) -> float:
+        total = 0.0
+        for token in tokens:
+            s = self._token_score(token, tool)
+            if s > 0:
+                total += s * self._idf(token)
+        total += self._bigram_score(tool, query_bigrams)
+        return total
 
     # 搜索名称和描述，更新重复检测状态并返回简短匹配结果
     def search(self, query: str, limit: int = 5) -> list[ToolSearchMatch]:
         self.search_blocked = False
         self.last_search_repeated = False
         self.last_query_repeated = False
-        tokens = [t.lower() for t in query.split() if t]
+        tokens = {
+            t.casefold() for t in query.split()
+            if t and t.casefold() not in _STOP_WORDS
+        }
         if not tokens:
             return []
         query_bigrams = _cjk_bigrams(query)
         scored: list[tuple[float, McpTool]] = []
         for tool in self._tools.values():
-            name = tool.name.lower()
-            description = tool.description.lower()
-            score = 0.0
-            for token in tokens:
-                if token in name:
-                    score = max(score, 3.0 if name.startswith(token) else 2.0)
-                elif token in description:
-                    score = max(score, 1.0)
-            if query_bigrams and query_bigrams & self._desc_bigrams[tool.name]:
-                score = max(score, 0.5)
-            if score:
+            score = self._tool_score(tool, tokens, query_bigrams)
+            if score > 0:
                 scored.append((score, tool))
         scored.sort(key=lambda item: (-item[0], item[1].name))
         selected = scored[: min(max(1, limit), self.search_max_results)]

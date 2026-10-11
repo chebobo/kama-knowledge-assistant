@@ -38,14 +38,15 @@ def test_modes_and_blocked_precedence(mode: str) -> None:
 
 
 # 功能：搜索按名称前缀、名称子串、描述排序，限制结果并省略 schema
-# 设计：三个工具分别命中不同字段，同时覆盖大小写、空查询和多 token
+# 设计：三个工具分别命中不同字段，同时覆盖大小写、空查询和多 token。
+# 新评分语义：工具名词中的完整词（files_backup 里的 files）高于服务器同名（files 服务器）
 def test_search_ranking_and_cap() -> None:
     exposure = McpToolExposure([
         make_tool("read"), make_tool("files_backup", server="archive"),
         make_tool("plain", "files", server="archive"),
     ], mode="lazy", search_max_results=2)
     matches = exposure.search("FILES", limit=99)
-    assert [m.name for m in matches] == ["files__read", "archive__files_backup"]
+    assert [m.name for m in matches] == ["archive__files_backup", "archive__plain"]
     assert all(not m.activated for m in matches)
     assert exposure.search("unmatched") == []
     assert exposure.search("   ") == []
@@ -232,7 +233,8 @@ def test_cjk_bigram_boundaries() -> None:
     ], mode="lazy")
     # 规格此例的“不命中”与保留原子串规则冲突，原始失败见交接日志。
     assert [m.name for m in exposure.search("查找 xy")] == ["files__unrelated"]
-    assert exposure._relevance["files__unrelated"] == 1.0
+    # 描述子串命中 × IDF（xy 在 2 工具目录中罕见 → 权重高），新评分为 1.0 * idf
+    assert exposure._relevance["files__unrelated"] > 1.0
     assert exposure.search("读取，文件", limit=1)[0].name == "files__target"
     assert exposure.search("读取123文件", limit=1)[0].name == "files__target"
     assert exposure.search("读取PDF文件", limit=1)[0].name == "files__target"
@@ -323,30 +325,36 @@ def test_cjk_bigram_exact_boundaries(query: str) -> None:
 
 
 # 功能：完整描述主匹配优先于中文弱匹配，同分仍按工具名排序
-# 设计：让噪声名称排在正确工具之前，limit=1 时必须选择主匹配
+# 设计：让噪声名称排在正确工具之前，limit=1 时必须选择主匹配。
+# 新评分：完整描述子串 × IDF（罕见） + bigram 封顶 0.5；弱匹配工具只有共享 bigram 贡献
 def test_complete_description_outranks_bigram_noise() -> None:
     exposure = McpToolExposure([
         make_tool("a_noise", "查找文件内容"),
         make_tool("z_correct", "查找股票行情"),
     ], mode="lazy")
     assert [m.name for m in exposure.search("查找股票行情", limit=1)] == ["files__z_correct"]
-    assert exposure._relevance["files__z_correct"] == 1.0
+    assert exposure._relevance["files__z_correct"] > 1.0
     exposure.search("查找股票行情", limit=2)
-    assert exposure._relevance["files__a_noise"] == 0.5
+    assert exposure._relevance["files__a_noise"] < 1.0
+    assert exposure._relevance["files__z_correct"] > exposure._relevance["files__a_noise"]
 
 
 # 功能：名称和描述主匹配与 bigram 同时命中时使用 max 而不加分
-# 设计：构造 3、2、1 三个等级并检查分数及确定性顺序完全保留
+# 设计：构造 3、2、1 三个等级并检查分数及确定性顺序完全保留。
+# 新评分：工具名词完整词（查找）乘 IDF 后与 bigram 弱匹配分数相加；server 同名不叠加
 def test_primary_scores_are_not_added_to_bigram_score() -> None:
     exposure = McpToolExposure([
         make_tool("查找", "查找内容", server="查找"),
         make_tool("查找", "查找内容"),
         make_tool("plain", "查找内容"),
     ], mode="lazy")
+    # 前两个工具都是“工具名词完整词”命中（同分），按名称确定性排序
     assert [m.name for m in exposure.search("查找")] == [
-        "查找__查找", "files__查找", "files__plain",
+        "files__查找", "查找__查找", "files__plain",
     ]
-    assert exposure._relevance == {"查找__查找": 3.0, "files__查找": 2.0, "files__plain": 1.0}
+    name_score = exposure._relevance["查找__查找"]
+    assert exposure._relevance["files__查找"] == name_score
+    assert exposure._relevance["files__plain"] < name_score
 
 
 # 功能：混合语言只通过原有英文 token 匹配，不从英文部分生成弱匹配
