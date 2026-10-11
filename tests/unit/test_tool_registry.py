@@ -75,3 +75,18 @@ def test_register_same_name_overwrites() -> None:
     found = registry.get("fake")
     assert found is not None
     assert found.description == "updated"
+
+# 功能：验证按名称筛选 schema、跳过未知名称，并保持请求顺序
+# 设计：注册两个不同工具，同时验证全量兼容和注册顺序
+def test_selected_schemas_and_tool_names() -> None:
+    registry = ToolRegistry()
+    a = _FakeTool()
+    b = _FakeTool()
+    a.name = "a"
+    b.name = "b"
+    registry.register(a)
+    registry.register(b)
+    assert registry.tool_names() == ["a", "b"]
+    assert [s["name"] for s in registry.tool_schemas()] == ["a", "b"]
+    assert [s["name"] for s in registry.tool_schemas(["b", "missing", "a"])] == ["b", "a"]
+    assert registry.tool_schemas([]) == []

@@ -11,6 +11,7 @@
 - **RAG 知识库子系统**（核心增量）：Qdrant Local 向量检索 + 本地 `bge-small-zh-v1.5` Embedding + SQLite FTS5 trigram BM25 词法检索 + RRF 混合融合 + sum 文档级聚合；
 - **量化评测体系**：20 问 golden set、single/multi 双口径、Hit / Recall / MRR / NDCG、固定候选池受控实验；
 - **Agent 集成**：Root Agent 自动检索注入、`knowledge_search` 工具（scope 隔离）、token 预算控制、RAG 故障降级；
+- **MCP 工具按需暴露体系**（核心增量）：catalog 全量登记与 lazy/eager 按需暴露分离、`tool_search` 按用途搜索激活、快照隔离与五层调用拦截（unknown / tool_not_exposed / schema_error / permission_denied / runtime）、jsonschema 参数校验、MCP 重试安全分级、工具结果预算截断、缓存 token 上下文度量修正；搜索增强（相同结果第 4 次硬拦截 + 多槽位禁集 + 中文 bigram 0.5 分弱匹配）；
 - **工程修复与验证**：Windows 信号处理兼容、真实 Agent 端到端验证（Q9 / Q18 实跑凭证）。
 
 原项目 LICENSE 完整保留（见 [LICENSE](./LICENSE)），新增代码同样遵循 MIT。
@@ -20,6 +21,8 @@
 - **本地优先**：向量检索（Qdrant Local）、Embedding（`bge-small-zh-v1.5`）、文档索引全部本地运行，不上传数据，无需外部服务。
 - **完整 Agent 框架**：Session 状态机、Tool/Permission 体系、MCP（stdio/TCP）、Subagent（spawn/result）、事件总线（events.jsonl + IPC 实时流 + trace）。
 - **RAG 四阶段演进，全部有数值评测**：V1 基础检索 → V2 Chunker 改良 → V3 Hybrid Search（中文 FTS5 trigram BM25 + RRF）→ V4 Document Aggregation（sum，opt-in）。
+- **MCP 工具按需暴露（lazy/eager）**：登记与暴露分离，模型只能通过 `tool_search` 按用途搜索、激活、下一轮使用；五层调用拦截（存在→可见→参数→权限→执行）+ MCP 重试安全分级 + 工具结果预算截断，企业级 MCP 不再撑爆上下文。
+- **搜索增强**：重复搜索状态机（相同结果第 4 次硬拦截、多槽位禁集防 A/B 循环、query 历史双提示）+ 中文 bigram 0.5 分弱匹配通道，解决模型空转与中文召回差。
 - **严谨评测方法论**：20 问 golden set、single/multi 双口径、Hit/Recall/MRR/NDCG、固定候选池受控实验、token 预算复核。
 
 ## 架构总览
@@ -38,6 +41,10 @@ kama-core (daemon)
 │           └── RRF Fusion → Top-K → Token Budget (4000)
 ├── EventBus → EventWriter / IpcBroadcaster / TraceWriter
 └── MCP Manager (stdio / TCP)
+    └── McpToolExposure (lazy/eager)
+        ├── catalog（全量登记，构造时快照）
+        ├── tool_search → 搜索（重复状态机 + 中文 bigram）→ 激活 → 下一轮可见
+        └── 五层调用拦截：存在 → 可见快照 → jsonschema 参数 → 权限 → 执行
 ```
 
 ## RAG 技术演进与评测结果
@@ -100,6 +107,23 @@ document_aggregation = "sum"   # 可选：None（默认）| "sum"
 
 - Root Agent 自动检索；Root/Subagent 均可手动调用 `knowledge_search`，scope（global + current project）由系统注入，LLM 无法越权指定 project。
 - RAG 初始化/检索失败自动降级，不影响普通 Agent Run。
+
+## 启用 MCP 工具按需暴露（lazy）
+
+`~/.kama/config.toml`：
+
+```toml
+[mcp]
+exposure_mode = "lazy"        # 默认不写：有 servers 时保持 eager（兼容旧配置）；显式 lazy 才启用按需发现
+max_active_tools = 8          # 激活工具上限
+max_schema_chars = 12000      # 已激活工具 schema 总字符预算
+search_max_results = 5        # 单次 tool_search 返回上限
+always_expose = []            # 常驻暴露的工具名（可带 server 前缀，如 "filesystem__read_file"）
+blocked_tools = []            # 黑名单，优先级高于 always_expose
+```
+
+- 模型只能通过 `tool_search` 按用途发现并激活工具；激活后的工具**下一轮**才可见完整 schema，猜测隐藏工具名会被 `tool_not_exposed` 拦截。
+- 重复搜索相同结果集合第 4 次被硬拦截（`search_blocked`），多槽位禁集防止 A/B 循环；中文近似措辞通过 bigram 0.5 分弱匹配召回。
 
 ## 环境要求
 

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 from pydantic import BaseModel
 
-from kama_claude.core.config import KamaConfig
+from kama_claude.core.config import KamaConfig, McpServerConfig
 from kama_claude.core.events.bus import EventBus
 from kama_claude.core.llm.types import LlmResponse, ToolCallBlock
+from kama_claude.core.mcp.client import McpClient, McpToolDef
+from kama_claude.core.mcp.tool import McpTool
 from kama_claude.core.runner import AgentRunner
 
 # --- mock provider -----------------------------------------------------------
@@ -384,3 +387,86 @@ async def test_auto_retrieval_failure_does_not_fail_run(tmp_path: Path) -> None:
 
     assert outcome.status == "success"
     assert provider.system is not None and "Retrieved Knowledge" not in provider.system
+
+
+# --- MCP exposure：模式推断、whitelist、blocked、per-run 隔离 --------------------
+
+
+def _make_mcp_manager(n: int = 2) -> tuple[MagicMock, list[McpTool]]:
+    manager = MagicMock()
+    tools = []
+    for i in range(n):
+        client = AsyncMock(spec=McpClient)
+        tools.append(
+            McpTool(
+                client,
+                "srv",
+                McpToolDef(
+                    name=f"tool{i}",
+                    description=f"Tool {i}",
+                    input_schema={"type": "object", "properties": {}},
+                ),
+            )
+        )
+    manager.get_tools.return_value = tools
+    return manager, tools
+
+
+# 功能：配置了 servers 但未显式写 exposure_mode 时推断为 eager（兼容旧配置）
+# 设计：构造只有 servers 的配置，断言 _build_mcp_exposure 的 mode 为 eager
+def test_old_servers_without_mode_defaults_eager(tmp_path: Path) -> None:
+    config = _config()
+    config.mcp.servers = [McpServerConfig(name="srv", transport="stdio")]
+    runner = AgentRunner(config, provider=_EndTurnProvider(), runs_dir=tmp_path)  # type: ignore[arg-type]
+    assert runner._build_mcp_exposure(None).mode == "eager"
+
+
+# 功能：显式 lazy / eager 配置被原样采用
+# 设计：分别设置 exposure_mode，断言 exposure.mode 匹配
+def test_explicit_mode_respected(tmp_path: Path) -> None:
+    for mode in ("lazy", "eager"):
+        config = _config()
+        config.mcp.exposure_mode = mode
+        runner = AgentRunner(config, provider=_EndTurnProvider(), runs_dir=tmp_path)  # type: ignore[arg-type]
+        assert runner._build_mcp_exposure(None).mode == mode
+
+
+# 功能：whitelist 在 exposure 目录构建前先过滤 MCP 工具
+# 设计：白名单只含第一个工具与 bash，断言 catalog 只剩白名单命中的 MCP 工具
+def test_whitelist_filters_mcp_catalog(tmp_path: Path) -> None:
+    manager, tools = _make_mcp_manager(3)
+    runner = AgentRunner(_config(), provider=_EndTurnProvider(), mcp_manager=manager, runs_dir=tmp_path)  # type: ignore[arg-type]
+    exposure = runner._build_mcp_exposure(["bash", tools[0].name])
+    names = [t.name for t in exposure.catalog]
+    assert names == [tools[0].name]
+
+
+# 功能：blocked_tools 从目录剔除，registry 不注册，猜名也无法执行
+# 设计：blocked 第一个工具，断言 catalog 与 registry 中均不存在该名称
+def test_blocked_tool_not_in_catalog_or_registry(tmp_path: Path) -> None:
+    config = _config()
+    config.mcp.blocked_tools = ["srv__tool0"]
+    manager, tools = _make_mcp_manager(2)
+    runner = AgentRunner(config, provider=_EndTurnProvider(), mcp_manager=manager, runs_dir=tmp_path)  # type: ignore[arg-type]
+    exposure = runner._build_mcp_exposure(None)
+    registry = runner._build_registry(runner._task_registry, mcp_exposure=exposure)
+    assert all(t.name != "srv__tool0" for t in exposure.catalog)
+    assert registry.get("srv__tool0") is None
+
+
+# 功能：每次 run 构建独立的 exposure 实例（并发 run 的激活集合互不影响）
+# 设计：连续调用两次 _build_mcp_exposure，断言返回不同实例
+def test_each_build_gets_fresh_exposure(tmp_path: Path) -> None:
+    manager, _ = _make_mcp_manager(2)
+    runner = AgentRunner(_config(), provider=_EndTurnProvider(), mcp_manager=manager, runs_dir=tmp_path)  # type: ignore[arg-type]
+    e1 = runner._build_mcp_exposure(None)
+    e2 = runner._build_mcp_exposure(None)
+    assert e1 is not e2
+
+
+# 功能：无 MCP 工具时注册表中不存在 tool_search
+# 设计：不注入 mcp_manager（目录空），断言 registry 不含 tool_search
+def test_no_mcp_tools_means_no_tool_search(tmp_path: Path) -> None:
+    runner = AgentRunner(_config(), provider=_EndTurnProvider(), runs_dir=tmp_path)  # type: ignore[arg-type]
+    registry = runner._build_registry(runner._task_registry)
+    assert registry.get("tool_search") is None

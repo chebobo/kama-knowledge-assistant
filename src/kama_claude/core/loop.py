@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from kama_claude.core.bus.events import StepFinishedEvent, StepStartedEvent
+from kama_claude.core.compact.budget import truncate_tool_results
 from kama_claude.core.context import ExecutionContext
 from kama_claude.core.events.bus import EventBus
 from kama_claude.core.llm.base import LLMProvider
+from kama_claude.core.mcp.exposure import McpToolExposure
+from kama_claude.core.mcp.tool import McpTool
 from kama_claude.core.tools.invocation import invoke_tool
 from kama_claude.core.tools.registry import ToolRegistry
-import logging
 
 if TYPE_CHECKING:
     from kama_claude.core.compact.compactor import Compactor
@@ -24,7 +27,8 @@ def _now() -> str:
 
 
 class AgentLoop:
-    # 初始化循环所需依赖：LLM provider、工具注册表、事件总线，以及可选的权限管理器、压缩器和 session ID
+    # 初始化循环所需依赖：LLM provider、工具注册表、事件总线，
+    # 以及可选的权限管理器、压缩器和 session ID
     def __init__(
         self,
         provider: LLMProvider,
@@ -35,6 +39,9 @@ class AgentLoop:
         compactor: Compactor | None = None,
         compact_threshold: float = 0.80,
         session_id: str = "",
+        exposure: McpToolExposure | None = None,
+        tool_result_limit: int = 8000,
+        tool_result_keep: int = 4000,
     ) -> None:
         self._provider = provider
         self._registry = registry
@@ -43,6 +50,9 @@ class AgentLoop:
         self._compactor = compactor
         self._compact_threshold = compact_threshold
         self._session_id = session_id
+        self._exposure = exposure
+        self._tool_result_limit = tool_result_limit
+        self._tool_result_keep = tool_result_keep
 
     # 驱动 plan→act→observe 循环直到上下文终止；CancelledError 向上传播
     async def run(self, context: ExecutionContext) -> None:
@@ -54,9 +64,20 @@ class AgentLoop:
 
             # [plan] call LLM — API errors terminate the run
             try:
+                visible_names = None
+                names = self._registry.tool_names()
+                if self._exposure is not None:
+                    visible_names = self._exposure.visible_names() | {
+                        n for n in names if not isinstance(self._registry.get(n), McpTool)
+                    }
+                tool_schemas = self._registry.tool_schemas(
+                    [n for n in names if n in visible_names] if visible_names is not None else None
+                )
                 response = await self._provider.chat(
-                    messages=context.messages,
-                    tool_schemas=self._registry.tool_schemas(),
+                    messages=truncate_tool_results(
+                        context.messages, self._tool_result_limit, self._tool_result_keep
+                    ),
+                    tool_schemas=tool_schemas,
                     bus=self._bus,
                     run_id=context.run_id,
                     step=context.step,
@@ -95,6 +116,7 @@ class AgentLoop:
                         self._registry, tc, self._bus, context.run_id,
                         permission_manager=self._permission_manager,
                         session_id=self._session_id,
+                        visible_names=visible_names,
                     )
                     context.add_tool_result(tc.id, result.content, is_error=result.is_error)
             elif response.stop_reason == "max_tokens" and response.tool_calls:
@@ -103,8 +125,9 @@ class AgentLoop:
                 for tc in response.tool_calls:
                     context.add_tool_result(
                         tc.id,
-                        "Error: output token limit reached before this tool call could be completed. "
-                        "Please break the task into smaller steps and try again.",
+                        "Error: output token limit reached before this tool call "
+                        "could be completed. Please break the task into smaller steps "
+                        "and try again.",
                         is_error=True,
                     )
 

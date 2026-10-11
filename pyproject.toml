@@ -11,6 +11,7 @@ name = "KamaClaude"
 version = "0.0.1"
 requires-python = ">=3.12,<3.13" # 仅支持 3.12 小版本范围，与 CI/类型检查一致
 dependencies = [
+    "jsonschema>=4.22",   # MCP 工具参数的 Draft 2020-12 schema 校验
     "pydantic>=2.0",       # 数据校验与序列化（含 JSON 模型等）
     "python-dotenv>=1.0",  # .env 文件解析
     "anthropic>=0.25",     # Anthropic LLM SDK（流式 + prompt caching）
@@ -33,6 +34,7 @@ packages = ["src/kama_claude"] # 源码在 src/kama_claude
 # ---- 开发期依赖（PEP 735）----
 [dependency-groups]
 dev = [
+    "types-jsonschema>=4.22", # jsonschema 的严格类型检查支持
     "ruff>=0.4",            # 快速 linter + import 排序等
     "mypy>=1.10",           # 静态类型检查
     "pytest>=8.0",          # 单元测试

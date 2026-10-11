@@ -1,14 +1,24 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
-from kama_claude.core.mcp.client import McpClient, McpServerUnavailableError, McpToolDef, McpToolError
+from jsonschema import Draft202012Validator
+
+from kama_claude.core.mcp.client import (
+    McpClient,
+    McpServerUnavailableError,
+    McpToolDef,
+    McpToolError,
+)
 from kama_claude.core.tools.base import BaseTool, ToolResult
 
 
 # 将 MCP 工具包装为 BaseTool，使 ToolRegistry 可透明调用
 class McpTool(BaseTool):
     params_model = None  # input_schema 来自 MCP tool_def，不使用 pydantic model
+    retryable_error_types: ClassVar[frozenset[str]] = frozenset(
+        {"connection_error", "rate_limited"}
+    )
 
     # 初始化 MCP 工具包装器，工具名以 server_name__ 为前缀防止命名冲突
     def __init__(self, client: McpClient, server_name: str, tool_def: McpToolDef) -> None:
@@ -21,6 +31,20 @@ class McpTool(BaseTool):
             tool_def.input_schema or {"type": "object", "properties": {}}
         )
 
+    # 使用 MCP 提供的 JSON Schema 校验参数，错误文本仅包含字段路径和原因
+    def validate_params(self, params: dict[str, object]) -> str | None:
+        if not self.input_schema:
+            return None
+        validator = Draft202012Validator(self.input_schema, format_checker=None)
+        errors = sorted(validator.iter_errors(params), key=lambda e: tuple(str(p) for p in e.path))
+        if not errors:
+            return None
+        lines = [
+            f"- {'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}"
+            for e in errors
+        ]
+        return f"Invalid arguments for {self.name}:\n" + "\n".join(lines)
+
     # 调用 MCP server 上的工具，连接不可用或工具执行失败时返回 is_error=True
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         try:
@@ -30,7 +54,7 @@ class McpTool(BaseTool):
             return ToolResult(
                 content=f"mcp server '{self._server_name}' unavailable: {exc}",
                 is_error=True,
-                error_type="runtime_error",
+                error_type="connection_error",
             )
         except McpToolError as exc:
             return ToolResult(

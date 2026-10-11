@@ -51,9 +51,9 @@ class PermissionConfig:
 
 @dataclass
 class CompactionConfig:
-    auto_threshold: float = 0.0    # context_pct 触发自动压缩的阈值（0 表示禁用，推荐用手动 /compact）
+    auto_threshold: float = 0.0  # context_pct 触发自动压缩的阈值（0 表示禁用，推荐手动 /compact）
     tool_result_limit: int = 8_000  # tool_result 截断触发字符数
-    tool_result_keep: int = 4_000   # 截断后保留的前缀字符数
+    tool_result_keep: int = 4_000  # 截断后保留的前缀字符数
 
 
 @dataclass
@@ -70,6 +70,12 @@ class McpServerConfig:
 @dataclass
 class McpConfig:
     servers: list[McpServerConfig] = field(default_factory=list)
+    exposure_mode: Literal["lazy", "eager"] | None = None
+    max_active_tools: int = 8
+    max_schema_chars: int = 12000
+    search_max_results: int = 5
+    always_expose: list[str] = field(default_factory=list)
+    blocked_tools: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -261,7 +267,9 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
         comp = data["compaction"]
         if not isinstance(comp, dict):
             raise SystemExit("Config error: [compaction] must be a table")
-        unknown_comp: set[str] = set(comp.keys()) - {"auto_threshold", "tool_result_limit", "tool_result_keep"}
+        unknown_comp: set[str] = set(comp.keys()) - {
+            "auto_threshold", "tool_result_limit", "tool_result_keep",
+        }
         if unknown_comp:
             raise SystemExit(f"Unknown [compaction] keys: {', '.join(sorted(unknown_comp))}")
         if "auto_threshold" in comp:
@@ -272,21 +280,49 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
         if "tool_result_limit" in comp:
             val = comp["tool_result_limit"]
             if not isinstance(val, int) or val <= 0:
-                raise SystemExit("Config error: compaction.tool_result_limit must be a positive integer")
+                raise SystemExit(
+                    "Config error: compaction.tool_result_limit must be a positive integer"
+                )
             config.compaction.tool_result_limit = val
         if "tool_result_keep" in comp:
             val = comp["tool_result_keep"]
             if not isinstance(val, int) or val <= 0:
-                raise SystemExit("Config error: compaction.tool_result_keep must be a positive integer")
+                raise SystemExit(
+                    "Config error: compaction.tool_result_keep must be a positive integer"
+                )
             config.compaction.tool_result_keep = val
 
     if "mcp" in data:
         mcp = data["mcp"]
         if not isinstance(mcp, dict):
             raise SystemExit("Config error: [mcp] must be a table")
-        unknown_mcp: set[str] = set(mcp.keys()) - {"servers"}
+        unknown_mcp: set[str] = set(mcp.keys()) - {
+            "servers", "exposure_mode", "max_active_tools", "max_schema_chars",
+            "search_max_results", "always_expose", "blocked_tools",
+        }
         if unknown_mcp:
             raise SystemExit(f"Unknown [mcp] keys: {', '.join(sorted(unknown_mcp))}")
+        if "exposure_mode" in mcp:
+            val = mcp["exposure_mode"]
+            if val not in ("lazy", "eager"):
+                raise SystemExit("Config error: mcp.exposure_mode must be 'lazy' or 'eager'")
+            config.mcp.exposure_mode = val
+        for key in ("max_active_tools", "max_schema_chars", "search_max_results"):
+            if key in mcp:
+                val = mcp[key]
+                if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
+                    raise SystemExit(f"Config error: mcp.{key} must be a positive integer")
+                setattr(config.mcp, key, val)
+        for key in ("always_expose", "blocked_tools"):
+            if key in mcp:
+                val = mcp[key]
+                if not isinstance(val, list) or any(
+                    not isinstance(n, str) or not n.strip() for n in val
+                ):
+                    raise SystemExit(
+                        f"Config error: mcp.{key} must be an array of non-empty strings"
+                    )
+                setattr(config.mcp, key, list(val))
         servers_raw = mcp.get("servers", [])
         if not isinstance(servers_raw, list):
             raise SystemExit("Config error: mcp.servers must be an array of tables")
@@ -298,7 +334,9 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
                 raise SystemExit(f"Config error: mcp.servers[{i}].name must be a non-empty string")
             transport = srv.get("transport", "stdio")
             if transport not in ("stdio", "tcp"):
-                raise SystemExit(f"Config error: mcp.servers[{i}].transport must be 'stdio' or 'tcp'")
+                raise SystemExit(
+                    f"Config error: mcp.servers[{i}].transport must be 'stdio' or 'tcp'"
+                )
             s = McpServerConfig(name=name, transport=transport)
             if "command" in srv:
                 val = srv["command"]
@@ -388,12 +426,16 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
             raise SystemExit("Config error: [knowledge.embedding] must be a table")
         unknown_embedding = set(embedding) - {"provider", "model"}
         if unknown_embedding:
-            raise SystemExit(f"Unknown [knowledge.embedding] keys: {', '.join(sorted(unknown_embedding))}")
+            raise SystemExit(
+                f"Unknown [knowledge.embedding] keys: {', '.join(sorted(unknown_embedding))}"
+            )
         for key in ("provider", "model"):
             if key in embedding:
                 val = embedding[key]
                 if not isinstance(val, str) or not val:
-                    raise SystemExit(f"Config error: knowledge.embedding.{key} must be a non-empty string")
+                    raise SystemExit(
+                        f"Config error: knowledge.embedding.{key} must be a non-empty string"
+                    )
                 setattr(config.knowledge.embedding, key, val)
         store = knowledge.get("store", {})
         if not isinstance(store, dict):
@@ -405,12 +447,33 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
             if key in store:
                 val = store[key]
                 if not isinstance(val, str) or not val:
-                    raise SystemExit(f"Config error: knowledge.store.{key} must be a non-empty string")
+                    raise SystemExit(
+                        f"Config error: knowledge.store.{key} must be a non-empty string"
+                    )
                 setattr(config.knowledge.store, key, val)
 
 
 # 用 KAMA_* 环境变量覆盖 config 中对应字段（若变量已设置）
 def _apply_env(config: KamaConfig) -> None:
+    mcp_options: dict[str, Any] = {}
+    for key in ("exposure_mode", "max_active_tools", "max_schema_chars", "search_max_results",
+                "always_expose", "blocked_tools"):
+        env_name = f"KAMA_MCP_{key.upper()}"
+        raw = os.environ.get(env_name)
+        if raw is None:
+            continue
+        if key in ("max_active_tools", "max_schema_chars", "search_max_results"):
+            try:
+                mcp_options[key] = int(raw)
+            except ValueError as exc:
+                raise SystemExit(f"Config error: {env_name} must be a positive integer") from exc
+        elif key in ("always_expose", "blocked_tools"):
+            mcp_options[key] = [n.strip() for n in raw.split(",")] if raw else []
+        else:
+            mcp_options[key] = raw
+    if mcp_options:
+        _apply_toml(config, {"mcp": mcp_options})
+
     host = os.environ.get("KAMA_HOST")
     if host is not None:
         config.host = host
@@ -485,7 +548,8 @@ def _apply_env(config: KamaConfig) -> None:
             compact_threshold_val = float(compact_threshold)
             if not (0.0 <= compact_threshold_val <= 1.0):
                 raise SystemExit(
-                    f"Config error: KAMA_COMPACT_THRESHOLD must be between 0 and 1, got: {compact_threshold!r}"
+                    "Config error: KAMA_COMPACT_THRESHOLD must be between 0 and 1, "
+                    f"got: {compact_threshold!r}"
                 )
             config.compaction.auto_threshold = compact_threshold_val
         except ValueError:
@@ -499,12 +563,14 @@ def _apply_env(config: KamaConfig) -> None:
             compact_tool_limit_val = int(compact_tool_limit)
             if compact_tool_limit_val <= 0:
                 raise SystemExit(
-                    f"Config error: KAMA_COMPACT_TOOL_LIMIT must be a positive integer, got: {compact_tool_limit!r}"
+                    "Config error: KAMA_COMPACT_TOOL_LIMIT must be a positive integer, "
+                    f"got: {compact_tool_limit!r}"
                 )
             config.compaction.tool_result_limit = compact_tool_limit_val
         except ValueError:
             raise SystemExit(
-                f"Config error: KAMA_COMPACT_TOOL_LIMIT must be an integer, got: {compact_tool_limit!r}"
+                "Config error: KAMA_COMPACT_TOOL_LIMIT must be an integer, "
+                f"got: {compact_tool_limit!r}"
             )
 
     compact_tool_keep = os.environ.get("KAMA_COMPACT_TOOL_KEEP")
@@ -513,12 +579,14 @@ def _apply_env(config: KamaConfig) -> None:
             compact_tool_keep_val = int(compact_tool_keep)
             if compact_tool_keep_val <= 0:
                 raise SystemExit(
-                    f"Config error: KAMA_COMPACT_TOOL_KEEP must be a positive integer, got: {compact_tool_keep!r}"
+                    "Config error: KAMA_COMPACT_TOOL_KEEP must be a positive integer, "
+                    f"got: {compact_tool_keep!r}"
                 )
             config.compaction.tool_result_keep = compact_tool_keep_val
         except ValueError:
             raise SystemExit(
-                f"Config error: KAMA_COMPACT_TOOL_KEEP must be an integer, got: {compact_tool_keep!r}"
+                "Config error: KAMA_COMPACT_TOOL_KEEP must be an integer, "
+                f"got: {compact_tool_keep!r}"
             )
 
     knowledge_enabled = os.environ.get("KAMA_KNOWLEDGE_ENABLED")
@@ -587,7 +655,9 @@ def _apply_env(config: KamaConfig) -> None:
         try:
             value = int(knowledge_tokens)
         except ValueError as exc:
-            raise SystemExit("Config error: KAMA_KNOWLEDGE_MAX_RETRIEVED_TOKENS must be an integer") from exc
+            raise SystemExit(
+                "Config error: KAMA_KNOWLEDGE_MAX_RETRIEVED_TOKENS must be an integer"
+            ) from exc
         if value <= 0:
             raise SystemExit("Config error: KAMA_KNOWLEDGE_MAX_RETRIEVED_TOKENS must be positive")
         config.knowledge.max_retrieved_tokens = value

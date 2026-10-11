@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from kama_claude.core.tools.base import BaseTool
 
 
@@ -16,12 +18,15 @@ class ToolRegistry:
         return self._tools.get(name)
 
     # 返回所有工具的 Anthropic 格式 schema 列表
-    def tool_schemas(self) -> list[dict[str, object]]:
+    def tool_schemas(self, names: Iterable[str] | None = None) -> list[dict[str, object]]:
+        tools = self._tools.values() if names is None else (
+            self._tools[name] for name in names if name in self._tools
+        )
         return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "input_schema": tool.input_schema,
-            }
-            for tool in self._tools.values()
+            {"name": tool.name, "description": tool.description, "input_schema": tool.input_schema}
+            for tool in tools
         ]
+
+    # 按注册顺序返回所有工具名
+    def tool_names(self) -> list[str]:
+        return list(self._tools)

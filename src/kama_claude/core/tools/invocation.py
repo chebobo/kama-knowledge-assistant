@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-
-from pydantic import ValidationError
 
 from kama_claude.core.bus.events import (
     PermissionDeniedEvent,
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
 _DEFAULT_TIMEOUT: float = 120.0
 _MAX_RETRIES: int = 2
 _RETRY_BASE_S: float = 2.0  # backoff base; tests can monkeypatch to 0
-_RETRYABLE: frozenset[str] = frozenset({"runtime_error", "rate_limited"})
 
 
 def _now() -> str:
@@ -70,6 +68,7 @@ async def invoke_tool(
     *,
     permission_manager: PermissionManager | None = None,
     session_id: str = "",
+    visible_names: Collection[str] | None = None,
 ) -> ToolResult:
     t0 = time.monotonic()
 
@@ -93,14 +92,17 @@ async def invoke_tool(
             "runtime_error", f"unknown tool: {tool_call.name}", elapsed(),
         )
 
-    if tool.params_model is not None:
-        try:
-            tool.params_model.model_validate(dict(tool_call.input))
-        except ValidationError as exc:
-            return await _fail(
-                bus, run_id, tool_call,
-                "schema_error", str(exc), elapsed(),
-            )
+    if visible_names is not None and tool_call.name not in visible_names:
+        return await _fail(
+            bus, run_id, tool_call, "tool_not_exposed",
+            f"Tool '{tool_call.name}' is not exposed in the current tool set. "
+            "Use tool_search first.",
+            elapsed(),
+        )
+
+    param_error = tool.validate_params(dict(tool_call.input))
+    if param_error:
+        return await _fail(bus, run_id, tool_call, "schema_error", param_error, elapsed())
 
     if permission_manager is not None:
         async def _emit_permission(raw: dict[str, Any]) -> None:
@@ -183,7 +185,10 @@ async def invoke_tool(
         assert error_class is not None and error_message is not None
         ms = elapsed()
 
-        if error_class in _RETRYABLE and attempt <= _MAX_RETRIES:
+        retryable_types = getattr(
+            tool, "retryable_error_types", frozenset({"runtime_error", "rate_limited"})
+        )
+        if error_class in retryable_types and attempt <= _MAX_RETRIES:
             await bus.publish(
                 ToolCallFailedEvent(
                     run_id=run_id,

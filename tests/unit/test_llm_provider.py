@@ -32,11 +32,12 @@ def _make_final(
     input_tokens: int = 100,
     output_tokens: int = 50,
     cache_read: int = 0,
+    cache_create: int = 0,
 ) -> MagicMock:
     msg = MagicMock()
     msg.stop_reason = stop_reason
     msg.content = content or []
-    msg.usage = _make_usage(input_tokens, output_tokens, cache_read)
+    msg.usage = _make_usage(input_tokens, output_tokens, cache_read, cache_create)
     return msg
 
 
@@ -72,8 +73,9 @@ def _make_provider(
     input_tokens: int = 100,
     output_tokens: int = 50,
     cache_read: int = 0,
+    cache_create: int = 0,
 ) -> tuple[AnthropicProvider, MagicMock]:
-    final = _make_final(stop_reason, content, input_tokens, output_tokens, cache_read)
+    final = _make_final(stop_reason, content, input_tokens, output_tokens, cache_read, cache_create)
     client = MagicMock()
     client.messages.stream.return_value = FakeStream(texts or [], final)
     return AnthropicProvider(model="test-model", client=client), client
@@ -201,3 +203,40 @@ async def test_no_tokens_when_response_is_empty() -> None:
     tokens = [e for e in events if e.type == "llm.token"]  # type: ignore[attr-defined]
     assert tokens == []
     assert result.text == ""
+
+
+# --- context_pct：缓存 token 计入上下文占用 -------------------------------------
+
+
+# 功能：context_pct 按 input + cache_read + cache_create 之和除以 context window 计算
+# 设计：test-model 的 context window 为 200000（未命中表的默认值）；分别用三种 token 组合断言事件值
+async def test_context_pct_includes_cache_tokens() -> None:
+    # 普通 input_tokens 组合：100 / 200000 = 0.0005
+    provider, _ = _make_provider(input_tokens=100, output_tokens=50)
+    _, events = await _chat(provider)
+    usage_events = [e for e in events if e.type == "llm.usage"]  # type: ignore[attr-defined]
+    assert usage_events[0].context_pct == pytest.approx(100 / 200_000)
+
+    # input + cache_read：100 + 900 = 0.005
+    provider, _ = _make_provider(input_tokens=100, output_tokens=50, cache_read=900)
+    _, events = await _chat(provider)
+    usage_events = [e for e in events if e.type == "llm.usage"]  # type: ignore[attr-defined]
+    assert usage_events[0].context_pct == pytest.approx(1000 / 200_000)
+
+    # input + cache_read + cache_create：100 + 900 + 1000 = 0.01
+    provider, _ = _make_provider(
+        input_tokens=100, output_tokens=50, cache_read=900, cache_create=1000
+    )
+    _, events = await _chat(provider)
+    usage_events = [e for e in events if e.type == "llm.usage"]  # type: ignore[attr-defined]
+    assert usage_events[0].context_pct == pytest.approx(2000 / 200_000)
+
+
+# 功能：LlmResponse.usage.context_pct 与 llm.usage 事件值一致（供 Compactor 决策）
+# 设计：缓存 token 组合下同时断言响应对象与事件两个来源的 context_pct
+async def test_response_usage_context_pct_matches_event() -> None:
+    provider, _ = _make_provider(input_tokens=100, output_tokens=50, cache_read=900)
+    result, events = await _chat(provider)
+    usage_events = [e for e in events if e.type == "llm.usage"]  # type: ignore[attr-defined]
+    assert result.usage is not None
+    assert result.usage.context_pct == pytest.approx(usage_events[0].context_pct)

@@ -16,6 +16,7 @@ from kama_claude.core.knowledge.service import KnowledgeService
 from kama_claude.core.llm.base import LLMProvider
 from kama_claude.core.llm.provider import AnthropicProvider
 from kama_claude.core.loop import AgentLoop
+from kama_claude.core.mcp.exposure import McpToolExposure
 from kama_claude.core.mcp.server import McpServerManager
 from kama_claude.core.memory.loader import load_context_file
 from kama_claude.core.permissions.manager import PermissionManager
@@ -37,6 +38,7 @@ from kama_claude.core.tools.builtin import (
     TaskUpdateTool,
     WriteFileTool,
 )
+from kama_claude.core.tools.builtin.tool_search import ToolSearchTool
 from kama_claude.core.tools.registry import ToolRegistry
 from kama_claude.core.trace.provider import TracingProvider
 from kama_claude.core.trace.writer import TraceWriter
@@ -95,6 +97,7 @@ class AgentRunner:
         user_id: str | None = None,
         project_id: str | None = None,
         tool_whitelist: list[str] | None = None,
+        mcp_exposure: McpToolExposure | None = None,
     ) -> ToolRegistry:
         allowed: set[str] | None = set(tool_whitelist) if tool_whitelist else None
 
@@ -148,11 +151,35 @@ class AgentRunner:
                 )
             if _ok("agent_result"):
                 registry.register(AgentResultTool(self._task_registry))
-        if self._mcp_manager is not None:
+        if mcp_exposure is not None:
+            if mcp_exposure.catalog and _ok("tool_search"):
+                registry.register(ToolSearchTool(mcp_exposure))
+            for mcp_tool in mcp_exposure.catalog:
+                if _ok(mcp_tool.name):
+                    registry.register(mcp_tool)
+        elif self._mcp_manager is not None:
             for mcp_tool in self._mcp_manager.get_tools():
                 if _ok(mcp_tool.name):
                     registry.register(mcp_tool)
         return registry
+
+    # 在白名单过滤之后为每次 run 构建独立的 MCP 暴露状态
+    def _build_mcp_exposure(self, tool_whitelist: list[str] | None) -> McpToolExposure:
+        config = self._config.mcp
+        mode = config.exposure_mode
+        if mode is None:
+            mode = "eager" if config.servers else "lazy"
+        allowed = set(tool_whitelist) if tool_whitelist else None
+        catalog = self._mcp_manager.get_tools() if self._mcp_manager is not None else []
+        return McpToolExposure(
+            catalog=[t for t in catalog if allowed is None or t.name in allowed],
+            mode=mode,
+            max_active_tools=config.max_active_tools,
+            max_schema_chars=config.max_schema_chars,
+            search_max_results=config.search_max_results,
+            always_expose=config.always_expose,
+            blocked_tools=config.blocked_tools,
+        )
 
     # 执行一次完整的 agent run（委托给 run_and_capture，忽略返回值）
     async def run(self, goal: str, *, run_id: str | None = None) -> None:
@@ -225,6 +252,7 @@ class AgentRunner:
                     if session is not None and store is not None
                     else self._runs_dir
                 )
+                exposure = self._build_mcp_exposure(tool_whitelist)
                 registry = self._build_registry(
                     task_manager,
                     session=session,
@@ -237,6 +265,7 @@ class AgentRunner:
                     user_id=context.user_id,
                     project_id=context.project_id,
                     tool_whitelist=tool_whitelist,
+                    mcp_exposure=exposure,
                 )
                 session_dir = (
                     store.session_dir(session.id)
@@ -250,6 +279,9 @@ class AgentRunner:
                     compactor=compactor,
                     compact_threshold=self._config.compaction.auto_threshold,
                     session_id=session_id_str,
+                    exposure=exposure,
+                    tool_result_limit=self._config.compaction.tool_result_limit,
+                    tool_result_keep=self._config.compaction.tool_result_keep,
                 )
                 await loop.run(context)
             except asyncio.CancelledError:

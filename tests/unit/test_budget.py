@@ -74,3 +74,26 @@ def test_assistant_message_untouched() -> None:
     msgs = [{"role": "assistant", "content": text}]
     result = truncate_tool_results(msgs, limit=8000, keep=4000)
     assert result[0]["content"] == text
+
+
+# 功能：已截断的 tool_result 再次截断时不重复处理（幂等）
+# 设计：先截断一次，对结果再截断，断言标记只出现一次且内容不变
+def test_already_truncated_result_not_re_truncated() -> None:
+    text = "y" * 10_000
+    once = truncate_tool_results([_make_tool_result_msg(text)], limit=8000, keep=4000)
+    twice = truncate_tool_results(once, limit=8000, keep=4000)
+    assert once[0]["content"][0]["content"] == twice[0]["content"][0]["content"]
+    assert twice[0]["content"][0]["content"].count("Full output is available") == 1
+
+
+# 功能：截断不修改原始消息对象（返回新列表与新 block 副本）
+# 设计：输入超长结果，断言原 msg dict 与 block 内容保持不变
+def test_truncation_does_not_mutate_original() -> None:
+    text = "z" * 10_000
+    msg = _make_tool_result_msg(text)
+    original_block = msg["content"][0]
+    result = truncate_tool_results([msg], limit=8000, keep=4000)
+    assert result[0] is not msg
+    assert result[0]["content"][0] is not original_block
+    assert original_block["content"] == text
+    assert msg["content"][0]["content"] == text

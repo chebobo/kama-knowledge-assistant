@@ -7,6 +7,7 @@ from kama_claude.core.tools.builtin.task_create import TaskCreateTool
 from kama_claude.core.tools.builtin.task_get import TaskGetTool
 from kama_claude.core.tools.builtin.task_list import TaskListTool
 from kama_claude.core.tools.builtin.task_update import TaskUpdateTool
+from kama_claude.core.tools.builtin.tool_search import ToolSearchTool
 from kama_claude.core.tools.builtin.write_file import WriteFileTool
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "TaskUpdateTool",
     "WriteFileTool",
     "KnowledgeSearchTool",
+    "ToolSearchTool",
 ]

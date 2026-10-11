@@ -5,8 +5,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from kama_claude.core.compact.compactor import Compactor
 from kama_claude.core.context import ExecutionContext
 from kama_claude.core.events.bus import EventBus
